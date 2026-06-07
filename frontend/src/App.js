@@ -360,7 +360,7 @@ function App() {
               <button 
                 onClick={handleQuit} 
                 style={{ 
-                  background: "#4b4b4b", 
+                  background: "#ff0000", 
                   color: "white", 
                   border: "none", 
                   padding: "8px 24px", 

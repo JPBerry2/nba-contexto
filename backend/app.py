@@ -22,7 +22,7 @@ def normalize_name(name):
     name = name.encode("ascii", "ignore").decode("utf-8")
     return name.lower().strip()
 
-# Create normalized column once
+# Create normalized column once globally
 df["normalized_name"] = df["Player"].apply(normalize_name)
 
 # ------------------------
@@ -74,18 +74,21 @@ def get_players():
 def new_game():
     difficulty = request.args.get("difficulty", "hard")
 
+    # 1. Filter the pool inside the route based on difficulty selection
     if difficulty == "easy":
         df_pool = df.sort_values("MP_basic", ascending=False).head(150)
     else:
         df_pool = df.copy()
 
     players_list = df_pool["Player"].tolist()
+    
+    # 2. CRITICAL FIX: Pick the random player here, dynamically, on EVERY call!
     chosen_player = random.choice(players_list)
 
-    # Compute metric mappings for this distinct instance
+    # 3. Compute metric mappings dynamically for this precise random instance
     computed_percentiles = compute_percentiles(chosen_player)
     
-    # Track game instances inside dictionary with a unique ID
+    # 4. Save this specific instance linked directly to a fresh tracking ID
     game_id = str(uuid.uuid4())
     active_games[game_id] = {
         "player": chosen_player,
