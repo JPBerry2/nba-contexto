@@ -141,6 +141,20 @@ def hint(hint_type):
     else:
         return jsonify({"error": "Invalid hint type"}), 400
 
+# ------------------------
+# Reveal Answer Route
+# ------------------------
+@app.route("/reveal_answer", methods=["GET"])
+def reveal_answer():
+    global hidden_player
+
+    if hidden_player is None:
+        return jsonify({"error": "No game in progress"}), 400
+
+    return jsonify({
+        "player": hidden_player
+    })
+
 
 import os
 

@@ -106,7 +106,7 @@ function App() {
         incomingItem = { type: "guess", player: guess, closeness: data.closeness };
       }
 
-      // FIX: Move current newest guess into the history log BEFORE overwriting it
+      // Move current newest guess into the history log BEFORE overwriting it
       if (newestGuess) {
         setSortedHistory((prevHistory) => {
           const updated = [...prevHistory, newestGuess];
@@ -149,12 +149,22 @@ function App() {
     }
   };
 
-  const handleQuit = () => {
+  const handleQuit = async () => {
     setGameOver(true);
-    if (newestGuess) {
-      setSortedHistory((prev) => [newestGuess, ...prev]);
+    let mysteryPlayer = "Unknown Player";
+    
+    try {
+      const res = await fetch(`${API}/reveal_answer`);
+      const data = await res.json();
+      if (data.player) mysteryPlayer = data.player;
+    } catch (err) {
+      console.error("Error revealing answer:", err);
     }
-    newestGuess({ type: "system", message: `You quit. Restart to play again.` });
+
+    if (newestGuess) {
+      setSortedHistory((prev) => [...prev, newestGuess]);
+    }
+    setNewestGuess({ type: "system", message: `😔 You quit. The secret player was: ${mysteryPlayer}. Restart to play again!` });
   };
 
   // ---------------------------------------------------------------------------
@@ -197,7 +207,18 @@ function App() {
         <h1>NBA Contexto</h1>
         <button 
           onClick={() => setShowInstructions(!showInstructions)}
-          style={{ borderRadius: "50%", width: "30px", height: "30px", padding: "0", cursor: "pointer", fontWeight: "bold" }}
+          style={{ 
+            borderRadius: "50%", 
+            width: "30px", 
+            height: "30px", 
+            padding: "0", 
+            cursor: "pointer", 
+            fontWeight: "bold",
+            color: "#333",
+            backgroundColor: "#e1e1e1",
+            border: "1px solid #bbb",
+            fontSize: "16px"
+          }}
         >
           ?
         </button>
@@ -330,8 +351,8 @@ function App() {
         <div style={{ background: "#e8f4fd", border: "1px solid #bee5eb", borderRadius: "8px", padding: "15px", marginBottom: "20px", textAlign: "left" }}>
           <h4 style={{ margin: "0 0 10px 0", color: "#17a2b8" }}>💡 Uncovered Hints</h4>
           {hintsList.map((h, idx) => (
-            <div key={idx} style={{ marginBottom: "5px", fontSize: "14px" }}>
-              <strong>{h.type.toUpperCase()}:</strong> {h.hint}
+            <div key={idx} style={{ marginBottom: "5px", fontSize: "14px", color: "black" }}>
+              <strong style={{ color: "black" }}>{h.type.toUpperCase()}:</strong> {h.hint}
             </div>
           ))}
         </div>
