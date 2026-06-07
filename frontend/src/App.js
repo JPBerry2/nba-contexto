@@ -4,7 +4,7 @@ import "./App.css";
 // ---------------------------------------------
 // CONFIG: Change this ONE line when deploying
 // ---------------------------------------------
-const API = "http://localhost:5000";
+const API = "https://nba-contexto.onrender.com";
 
 function App() {
   const [difficulty, setDifficulty] = useState("hard");
