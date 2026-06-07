@@ -25,8 +25,8 @@ function App() {
       .catch(err => console.error("Error loading players:", err));
 
     startNewGame(difficulty);
-  }, []);
-
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
   // ------------------------
   // Start new game
   // ------------------------
