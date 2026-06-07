@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import "./App.css";
 
-const API = "https://nba-contexto-backend.onrender.com";
+const API = "https://nba-contexto.onrender.com";
 
 function App() {
   const [difficulty, setDifficulty] = useState("hard");
@@ -49,6 +49,7 @@ function App() {
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -153,7 +154,7 @@ function App() {
     if (newestGuess) {
       setSortedHistory((prev) => [newestGuess, ...prev]);
     }
-    setNewestGuess({ type: "system", message: `You quit. Restart to play again.` });
+    newestGuess({ type: "system", message: `You quit. Restart to play again.` });
   };
 
   // ---------------------------------------------------------------------------
