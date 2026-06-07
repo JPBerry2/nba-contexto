@@ -388,7 +388,7 @@ function App() {
 
       {/* PERSISTENT UNCOVERED HINTS HUD */}
       {gameStarted && hintsList.length > 0 && (
-        <div style={{ background: "#e8f4fd", border: "1px solid #bee5eb", borderRadius: "8px", padding: "15px", marginBottom: "20px", textAlign: "left" }}>
+        <div style={{ background: "#02cf13", border: "1px solid #bee5eb", borderRadius: "8px", padding: "15px", marginBottom: "20px", textAlign: "left" }}>
           <h4 style={{ margin: "0 0 10px 0", color: "#17a2b8" }}>💡 Uncovered Hints</h4>
           {hintsList.map((h, idx) => (
             <div key={idx} style={{ marginBottom: "5px", fontSize: "14px", color: "black" }}>
