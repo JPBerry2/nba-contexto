@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import "./App.css";
 
 const API = "https://nba-contexto-backend.onrender.com";
@@ -11,37 +11,49 @@ function App() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [gameOver, setGameOver] = useState(false);
 
-  // States from previous updates
+  // Core History States
   const [isLoading, setIsLoading] = useState(true);
   const [newestGuess, setNewestGuess] = useState(null);
   const [sortedHistory, setSortedHistory] = useState([]);
 
-  // --- NEW STATES FOR YOUR 3 FIXES ---
-  const [gameStarted, setGameStarted] = useState(false); // For initial large buttons
-  const [showInstructions, setShowInstructions] = useState(false); // For How to Play
-  const [hintsList, setHintsList] = useState([]); // Persistent hints area
+  // UX Feature States
+  const [gameStarted, setGameStarted] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(false);
+  const [hintsList, setHintsList] = useState([]);
 
-  // ------------------------
-  // Load players initially
-  // ------------------------
+  // Ref to handle clicking outside autocomplete dropdown
+  const autocompleteRef = useRef(null);
+
+  // ---------------------------------------------------------------------------
+  // 1. Initial Setup (Load players & setup click-away event listener)
+  // ---------------------------------------------------------------------------
   useEffect(() => {
     setIsLoading(true);
     fetch(`${API}/players`)
-      .then(res => res.json())
-      .then(data => {
+      .then((res) => res.json())
+      .then((data) => {
         setPlayers(data);
         setIsLoading(false);
       })
-      .catch(err => {
+      .catch((err) => {
         console.error("Error loading players:", err);
         setIsLoading(false);
       });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    // Close suggestions if user clicks away
+    const handleClickOutside = (event) => {
+      if (autocompleteRef.current && !autocompleteRef.current.contains(event.target)) {
+        setShowSuggestions(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // ------------------------
-  // Start new game
-  // ------------------------
+  // ---------------------------------------------------------------------------
+  // 2. Start Game Logic
+  // ---------------------------------------------------------------------------
   const startNewGame = async (level) => {
     setDifficulty(level);
     try {
@@ -50,9 +62,9 @@ function App() {
 
       setNewestGuess({ type: "system", message: `🎮 New game started! Difficulty: ${data.difficulty}` });
       setSortedHistory([]);
-      setHintsList([]); // Clear previous game hints
+      setHintsList([]);
       setGameOver(false);
-      setGameStarted(true); // Switches UI from welcome buttons to regular gameplay
+      setGameStarted(true);
       setGuess("");
       setFilteredPlayers([]);
       setShowSuggestions(false);
@@ -62,14 +74,15 @@ function App() {
     }
   };
 
+  // Helper function to map proximity values to visual heat color maps
   const getColor = (value) => {
     const hue = (value * 120) / 100;
     return `hsl(${hue}, 100%, 50%)`;
   };
 
-  // ------------------------
-  // Submit guess
-  // ------------------------
+  // ---------------------------------------------------------------------------
+  // 3. Submit Guess Logic (Fixed State Closures)
+  // ---------------------------------------------------------------------------
   const handleGuessSubmit = async () => {
     if (!guess || gameOver) return;
 
@@ -92,8 +105,9 @@ function App() {
         incomingItem = { type: "guess", player: guess, closeness: data.closeness };
       }
 
+      // FIX: Move current newest guess into the history log BEFORE overwriting it
       if (newestGuess) {
-        setSortedHistory(prevHistory => {
+        setSortedHistory((prevHistory) => {
           const updated = [...prevHistory, newestGuess];
           return updated.sort((a, b) => {
             if (a.type === "system") return 1;
@@ -120,17 +134,15 @@ function App() {
     }
   };
 
-  // ------------------------
-  // Upgraded Hint Logic (Fix #3)
-  // ------------------------
+  // ---------------------------------------------------------------------------
+  // 4. Hints & Resignation
+  // ---------------------------------------------------------------------------
   const getHint = async (type) => {
     if (gameOver) return;
     try {
       const res = await fetch(`${API}/hint/${type}`);
       const data = await res.json();
-      
-      // Save hints here so they stay permanently pinned at the top
-      setHintsList(prev => [...prev, { type, hint: data.hint }]);
+      setHintsList((prev) => [...prev, { type, hint: data.hint }]);
     } catch (err) {
       console.error("Error getting hint:", err);
     }
@@ -139,26 +151,29 @@ function App() {
   const handleQuit = () => {
     setGameOver(true);
     if (newestGuess) {
-      setSortedHistory(prev => [newestGuess, ...prev]);
+      setSortedHistory((prev) => [newestGuess, ...prev]);
     }
-    setNewestGuess({ type: "system", message: "You quit. Restart to play again." });
+    setNewestGuess({ type: "system", message: `You quit. Restart to play again.` });
   };
 
+  // ---------------------------------------------------------------------------
+  // 5. Render Templates
+  // ---------------------------------------------------------------------------
   const renderFeedbackItem = (item, isNewest = false) => {
     if (!item) return null;
     if (item.type === "system") {
-      return <div className={`feedback-item system ${isNewest ? 'newest' : ''}`}>{item.message}</div>;
+      return <div className={`feedback-item system ${isNewest ? "newest" : ""}`}>{item.message}</div>;
     }
 
     return (
-      <div className={`feedback-item ${isNewest ? 'newest-guess' : ''}`}>
+      <div className={`feedback-item ${isNewest ? "newest-guess" : ""}`} style={{ marginBottom: "15px" }}>
         <strong>{item.player} {isNewest && "✨"}</strong>
         <div style={{
           width: "300px",
           height: "20px",
           background: "#ddd",
           borderRadius: "10px",
-          marginTop: "5px",
+          margin: "5px auto",
           overflow: "hidden"
         }}>
           <div style={{
@@ -176,7 +191,7 @@ function App() {
   return (
     <div className="App" style={{ maxWidth: "500px", margin: "0 auto", padding: "20px", textAlign: "center" }}>
       
-      {/* HEADER + HOW TO PLAY TRIGGER (Fix #2) */}
+      {/* HEADER SECTION */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
         <h1>NBA Contexto</h1>
         <button 
@@ -187,7 +202,7 @@ function App() {
         </button>
       </div>
 
-      {/* HOW TO PLAY PANEL (Fix #2) */}
+      {/* HOW TO PLAY ACCORDION */}
       {showInstructions && (
         <div style={{ background: "#f1f1f1", padding: "15px", borderRadius: "8px", margin: "15px 0", textAlign: "left", border: "1px solid #ccc" }}>
           <h3>💡 How to Play</h3>
@@ -201,14 +216,14 @@ function App() {
         </div>
       )}
 
-      {/* SERVER WAKING BANNER */}
+      {/* RENDER ON COLD START */}
       {isLoading && (
         <div className="loading-banner" style={{ background: "#fff3cd", color: "#856404", padding: "10px", borderRadius: "5px", marginBottom: "15px" }}>
           <p>⏳ Waking up the server... Please wait roughly 50 seconds on first load!</p>
         </div>
       )}
 
-      {/* INITIAL DIFFICULTY SELECTOR SCREEN (Fix #1) */}
+      {/* SPLASH INTERFACE DIFFICULTY SELECTOR */}
       {!gameStarted && !isLoading && (
         <div style={{ margin: "40px 0" }}>
           <h2>Select Game Difficulty to Begin:</h2>
@@ -223,24 +238,20 @@ function App() {
         </div>
       )}
 
-      {/* ACTIVE GAMEBOARD */}
+      {/* GAMEPLAY SCREEN CONTAINER */}
       {gameStarted && !gameOver && (
         <>
-          {/* Subtle dropdown to toggle difficulty later if desired (Fix #1 alternative) */}
           <label style={{ display: "block", marginBottom: "20px" }}>
             Change Difficulty:{" "}
-            <select
-              value={difficulty}
-              onChange={(e) => startNewGame(e.target.value)}
-            >
+            <select value={difficulty} onChange={(e) => startNewGame(e.target.value)}>
               <option value="easy">Easy</option>
               <option value="hard">Hard</option>
             </select>
           </label>
 
-          {/* AUTOCOMPLETE INPUT SECTION */}
+          {/* GUESS SEARCH INPUT AUTOCOMPLETE */}
           <div className="guess-section" style={{ marginBottom: "20px" }}>
-            <div className="autocomplete" style={{ position: "relative", display: "inline-block" }}>
+            <div className="autocomplete" ref={autocompleteRef} style={{ position: "relative", display: "inline-block" }}>
               <input
                 type="text"
                 value={guess}
@@ -293,6 +304,7 @@ function App() {
             </button>
           </div>
 
+          {/* OPTIONS ACTIONS BAR */}
           <div className="buttons" style={{ marginBottom: "30px", display: "flex", gap: "5px", justifyContent: "center" }}>
             <button onClick={() => getHint("age")}>Hint: Age</button>
             <button onClick={() => getHint("position")}>Hint: Position</button>
@@ -302,7 +314,7 @@ function App() {
         </>
       )}
 
-      {/* GAME OVER AREA */}
+      {/* GAME OVER CARD VIEW */}
       {gameOver && (
         <div style={{ margin: "20px 0" }}>
           <h2>Game Over</h2>
@@ -312,7 +324,7 @@ function App() {
         </div>
       )}
 
-      {/* DEDICATED STATIC HINTS DISPLAY (Fix #3) */}
+      {/* PERSISTENT UNCOVERED HINTS HUD */}
       {gameStarted && hintsList.length > 0 && (
         <div style={{ background: "#e8f4fd", border: "1px solid #bee5eb", borderRadius: "8px", padding: "15px", marginBottom: "20px", textAlign: "left" }}>
           <h4 style={{ margin: "0 0 10px 0", color: "#17a2b8" }}>💡 Uncovered Hints</h4>
@@ -324,7 +336,7 @@ function App() {
         </div>
       )}
 
-      {/* SCOREBOARD / FEEDBACK AREA */}
+      {/* SCORE AND HISTORY METRICS FEED */}
       {gameStarted && (
         <div className="feedback">
           <h2>Guesses</h2>
