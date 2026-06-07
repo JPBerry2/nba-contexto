@@ -2,23 +2,19 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import random
 import unicodedata
-import os
-from similarity_engine import (
-    df, 
-    X_categories, 
-    sub_weights, 
-    MACRO_WEIGHTS, 
-    calculate_physical_sim, 
-    weighted_cosine_similarity
-)
+import uuid
+from similarity_engine import df, X_categories, category_weights, cosine_similarity, position_similarity
 
 app = Flask(__name__)
 CORS(app)
 
-hidden_player = None
-percentiles = {}
+# Infinite Mode In-Memory Sessions Storage
+# Format: { "game_uuid_string": { "player": "Name", "percentiles": {...} } }
+active_games = {}
 
-# Normalize incoming name string inputs
+# ------------------------
+# Normalize names (ignore case + accents)
+# ------------------------
 def normalize_name(name):
     if not name:
         return ""
@@ -26,95 +22,95 @@ def normalize_name(name):
     name = name.encode("ascii", "ignore").decode("utf-8")
     return name.lower().strip()
 
-# Build index helper column
+# Create normalized column once
 df["normalized_name"] = df["Player"].apply(normalize_name)
 
 # ------------------------
-# SIMILARITY SCHEDULER
+# Similarity computation
 # ------------------------
 def compute_percentiles(target_player):
     idx_target = df.index[df["Player"] == target_player][0]
-    target_data = df.iloc[idx_target]
+    target_pos = df.iloc[idx_target]["Pos_code"]
 
     sims = []
     for i in range(len(df)):
         if i == idx_target:
             continue
 
-        comp_data = df.iloc[i]
-        
-        # 20% Physical / Identity Attributes
-        sim_physical = calculate_physical_sim(target_data, comp_data)
-        
-        # 40% Volume Production
-        sim_production = weighted_cosine_similarity(
-            X_categories["production"][idx_target],
-            X_categories["production"][i],
-            sub_weights["production"]
-        )
-        
-        # 40% Efficiency and Playing Style Matrix
-        sim_style = weighted_cosine_similarity(
-            X_categories["style"][idx_target],
-            X_categories["style"][i],
-            sub_weights["style"]
+        sim_total = 0
+        for cat, weight in category_weights.items():
+            sim_cat = cosine_similarity(
+                X_categories[cat][idx_target],
+                X_categories[cat][i]
+            )
+            sim_total += sim_cat * weight
+
+        sim_total = 0.8 * sim_total + 0.2 * position_similarity(
+            target_pos,
+            df.iloc[i]["Pos_code"]
         )
 
-        # Balanced aggregate score
-        sim_total = (
-            (MACRO_WEIGHTS["physical"] * sim_physical) +
-            (MACRO_WEIGHTS["production"] * sim_production) +
-            (MACRO_WEIGHTS["style"] * sim_style)
-        )
         sims.append((df.iloc[i]["Player"], sim_total))
 
-    # Rank high scores first
     sims.sort(key=lambda x: x[1], reverse=True)
 
     n = len(sims)
     percentile_dict = {}
     for rank, (player, score) in enumerate(sims, start=1):
         percentile = int((n - rank) / n * 100)
-        percentile_dict[player] = max(1, percentile) # Clamps floor at 1% instead of 0%
+        percentile_dict[player] = percentile
 
     return percentile_dict
 
 # ------------------------
-# API ENDPOINTS
+# Routes
 # ------------------------
+
 @app.route("/players", methods=["GET"])
 def get_players():
     return jsonify(sorted(df["Player"].unique().tolist()))
 
 @app.route("/new_game", methods=["GET"])
 def new_game():
-    global hidden_player, percentiles
-
     difficulty = request.args.get("difficulty", "hard")
 
-    # Safely select player without breaking structural DataFrame index bounds
     if difficulty == "easy":
         df_pool = df.sort_values("MP_basic", ascending=False).head(150)
     else:
-        df_pool = df
+        df_pool = df.copy()
 
     players_list = df_pool["Player"].tolist()
-    hidden_player = random.choice(players_list)
+    chosen_player = random.choice(players_list)
 
-    # Computes scores safely utilizing complete index bounds
-    percentiles = compute_percentiles(hidden_player)
+    # Compute metric mappings for this distinct instance
+    computed_percentiles = compute_percentiles(chosen_player)
+    
+    # Track game instances inside dictionary with a unique ID
+    game_id = str(uuid.uuid4())
+    active_games[game_id] = {
+        "player": chosen_player,
+        "percentiles": computed_percentiles
+    }
 
     return jsonify({
         "message": "New game started",
-        "difficulty": difficulty
+        "difficulty": difficulty,
+        "game_id": game_id
     })
 
 @app.route("/guess", methods=["POST"])
 def guess():
-    global hidden_player, percentiles
-
-    data = request.json or {}
+    data = request.json
     player_guess = data.get("player")
+    game_id = data.get("game_id")
+
+    # Validate active instance session lookup
+    if not game_id or game_id not in active_games:
+        return jsonify({"error": "Session expired or missing. Please restart."}), 400
+
+    current_game = active_games[game_id]
+    hidden_player = current_game["player"]
+    percentiles = current_game["percentiles"]
 
     guess_normalized = normalize_name(player_guess)
 
@@ -125,12 +121,14 @@ def guess():
     actual_name = actual_row["Player"]
 
     if actual_name == hidden_player:
+        # Cleanup memory once a game instance is successfully completed
+        active_games.pop(game_id, None)
         return jsonify({
             "correct": True,
             "player": hidden_player
         })
 
-    closeness = percentiles.get(actual_name, 1)
+    closeness = percentiles.get(actual_name, 0)
 
     return jsonify({
         "correct": False,
@@ -139,15 +137,16 @@ def guess():
 
 @app.route("/hint/<hint_type>", methods=["GET"])
 def hint(hint_type):
-    global hidden_player
+    game_id = request.args.get("game_id")
+    
+    if not game_id or game_id not in active_games:
+        return jsonify({"error": "Game not found"}), 400
 
-    if hidden_player is None:
-        return jsonify({"error": "No game in progress"}), 400
-
+    hidden_player = active_games[game_id]["player"]
     info = df[df["Player"] == hidden_player].iloc[0]
 
     if hint_type == "age":
-        return jsonify({"hint": int(info["Age_basic"])})
+        return jsonify({"hint": str(info["Age_basic"])})
     elif hint_type == "position":
         return jsonify({"hint": str(info["Pos_basic"])})
     elif hint_type == "team":
@@ -157,14 +156,21 @@ def hint(hint_type):
 
 @app.route("/reveal_answer", methods=["GET"])
 def reveal_answer():
-    global hidden_player
+    game_id = request.args.get("game_id")
+    
+    if not game_id or game_id not in active_games:
+        return jsonify({"error": "Game session not found"}), 400
 
-    if hidden_player is None:
-        return jsonify({"error": "No game in progress"}), 400
+    hidden_player = active_games[game_id]["player"]
+    
+    # Remove instance tracking data upon direct resignation
+    active_games.pop(game_id, None)
 
     return jsonify({
         "player": hidden_player
     })
+
+import os
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
