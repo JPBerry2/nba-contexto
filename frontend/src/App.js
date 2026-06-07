@@ -226,7 +226,7 @@ function App() {
 
       {/* HOW TO PLAY ACCORDION */}
       {showInstructions && (
-        <div style={{ background: "#f1f1f1", padding: "15px", borderRadius: "8px", margin: "15px 0", textAlign: "left", border: "1px solid #ccc" }}>
+        <div style={{ color: "black", background: "#f1f1f1", padding: "15px", borderRadius: "8px", margin: "15px 0", textAlign: "left", border: "1px solid #ccc" }}>
           <h3>💡 How to Play</h3>
           <p>Guess the secret NBA player! Every guess you make gets an AI similarity score from 0 to 100.</p>
           <ul>
