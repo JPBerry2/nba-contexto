@@ -11,6 +11,9 @@ function App() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [gameOver, setGameOver] = useState(false);
 
+  // Infinite Game Instance States (Sent by backend per-session)
+  const [gameId, setGameId] = useState(null);
+
   // Core History States
   const [isLoading, setIsLoading] = useState(true);
   const [newestGuess, setNewestGuess] = useState(null);
@@ -40,7 +43,6 @@ function App() {
         setIsLoading(false);
       });
 
-    // Close suggestions if user clicks away
     const handleClickOutside = (event) => {
       if (autocompleteRef.current && !autocompleteRef.current.contains(event.target)) {
         setShowSuggestions(false);
@@ -49,11 +51,10 @@ function App() {
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ---------------------------------------------------------------------------
-  // 2. Start Game Logic
+  // 2. Start Game Logic (Now grabs a unique game token for Infinite Mode)
   // ---------------------------------------------------------------------------
   const startNewGame = async (level) => {
     setDifficulty(level);
@@ -61,6 +62,7 @@ function App() {
       const res = await fetch(`${API}/new_game?difficulty=${level}`);
       const data = await res.json();
 
+      setGameId(data.game_id); // Target player is locked to this unique game instance
       setNewestGuess({ type: "system", message: `🎮 New game started! Difficulty: ${data.difficulty}` });
       setSortedHistory([]);
       setHintsList([]);
@@ -82,7 +84,7 @@ function App() {
   };
 
   // ---------------------------------------------------------------------------
-  // 3. Submit Guess Logic (Fixed State Closures)
+  // 3. Submit Guess Logic
   // ---------------------------------------------------------------------------
   const handleGuessSubmit = async () => {
     if (!guess || gameOver) return;
@@ -91,7 +93,7 @@ function App() {
       const res = await fetch(`${API}/guess`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ player: guess }),
+        body: JSON.stringify({ player: guess, game_id: gameId }),
       });
 
       const data = await res.json();
@@ -106,7 +108,6 @@ function App() {
         incomingItem = { type: "guess", player: guess, closeness: data.closeness };
       }
 
-      // Move current newest guess into the history log BEFORE overwriting it
       if (newestGuess) {
         setSortedHistory((prevHistory) => {
           const updated = [...prevHistory, newestGuess];
@@ -139,10 +140,15 @@ function App() {
   // 4. Hints & Resignation
   // ---------------------------------------------------------------------------
   const getHint = async (type) => {
-    if (gameOver) return;
+    if (gameOver || hasHint(type)) return;
     try {
-      const res = await fetch(`${API}/hint/${type}`);
+      const res = await fetch(`${API}/hint/${type}?game_id=${gameId}`);
       const data = await res.json();
+      
+      // Stop duplicates if the backend keeps sending the same string for Team
+      const isDuplicate = hintsList.some(h => h.type === type && h.hint === data.hint);
+      if (isDuplicate) return;
+
       setHintsList((prev) => [...prev, { type, hint: data.hint }]);
     } catch (err) {
       console.error("Error getting hint:", err);
@@ -154,7 +160,7 @@ function App() {
     let mysteryPlayer = "Unknown Player";
     
     try {
-      const res = await fetch(`${API}/reveal_answer`);
+      const res = await fetch(`${API}/reveal_answer?game_id=${gameId}`);
       const data = await res.json();
       if (data.player) mysteryPlayer = data.player;
     } catch (err) {
@@ -165,6 +171,15 @@ function App() {
       setSortedHistory((prev) => [...prev, newestGuess]);
     }
     setNewestGuess({ type: "system", message: `😔 You quit. The secret player was: ${mysteryPlayer}. Restart to play again!` });
+  };
+
+  // Helper to check if a specific hint type was already revealed
+  const hasHint = (type) => {
+    if (type === "age" || type === "position") {
+      return hintsList.some((h) => h.type === type);
+    }
+    // If your backend returns only 1 string for Team, we track it like Age/Position
+    return hintsList.some((h) => h.type === "team");
   };
 
   // ---------------------------------------------------------------------------
@@ -327,11 +342,36 @@ function App() {
           </div>
 
           {/* OPTIONS ACTIONS BAR */}
-          <div className="buttons" style={{ marginBottom: "30px", display: "flex", gap: "5px", justifyContent: "center" }}>
-            <button onClick={() => getHint("age")}>Hint: Age</button>
-            <button onClick={() => getHint("position")}>Hint: Position</button>
-            <button onClick={() => getHint("team")}>Hint: Team</button>
-            <button onClick={handleQuit}>Quit</button>
+          <div style={{ marginBottom: "30px" }}>
+            <div className="hint-buttons" style={{ display: "flex", gap: "5px", justifyContent: "center", marginBottom: "10px" }}>
+              <button onClick={() => getHint("age")} disabled={hasHint("age")}>
+                {hasHint("age") ? "Age Revealed" : "Hint: Age"}
+              </button>
+              <button onClick={() => getHint("position")} disabled={hasHint("position")}>
+                {hasHint("position") ? "Position Revealed" : "Hint: Position"}
+              </button>
+              <button onClick={() => getHint("team")} disabled={hasHint("team")}>
+                {hasHint("team") ? "Team Revealed" : "Hint: Team"}
+              </button>
+            </div>
+            
+            {/* STYLED QUIT BUTTON */}
+            <div style={{ marginTop: "15px", borderTop: "1px solid #eee", paddingTop: "15px" }}>
+              <button 
+                onClick={handleQuit} 
+                style={{ 
+                  background: "#4b4b4b", 
+                  color: "white", 
+                  border: "none", 
+                  padding: "8px 24px", 
+                  borderRadius: "4px", 
+                  cursor: "pointer",
+                  fontWeight: "bold" 
+                }}
+              >
+                🏳️ Quit & Reveal
+              </button>
+            </div>
           </div>
         </>
       )}
