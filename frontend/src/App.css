@@ -1,0 +1,159 @@
+/* App.css */
+
+.App {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  text-align: center;
+  background: #1e1e2f; /* Dark purple/blue background */
+  color: #f0f0f0;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+h1 {
+  color: #ff6f61; /* Bright accent for title */
+  margin-bottom: 20px;
+}
+
+label select {
+  padding: 5px 10px;
+  margin-left: 10px;
+  border-radius: 5px;
+  border: none;
+  font-size: 1rem;
+}
+
+.guess-section {
+  margin: 20px 0;
+  color: #181616;
+}
+
+input[type="text"] {
+  padding: 8px;
+  width: 200px;
+  border-radius: 5px;
+  border: 1px solid #555;
+  margin-right: 10px;
+}
+
+button {
+  padding: 8px 15px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.2s ease;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Button colors */
+button:hover:not(:disabled) {
+  background-color: #ff6f61;
+  color: #fff;
+}
+
+.buttons button {
+  margin: 5px;
+  background-color: #4a90e2;
+  color: white;
+}
+
+.buttons button:hover:not(:disabled) {
+  background-color: #357ab7;
+}
+
+/* Feedback section */
+.feedback {
+  margin-top: 30px;
+  max-height: 300px;
+  overflow-y: auto;
+  text-align: left;
+  width: 400px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 10px;
+  background-color: #2a2a40;
+  border-radius: 8px;
+  border: 1px solid #444;
+}
+
+/* Feedback message types */
+.feedback li {
+  margin: 5px 0;
+  padding: 5px 10px;
+  border-radius: 5px;
+}
+
+/* Color coding */
+.feedback li:contains("🎉") {
+  background-color: #28a745; /* Green for correct guess */
+  color: #fff;
+}
+
+.feedback li:contains("❌") {
+  background-color: #dc3545; /* Red for error */
+  color: #fff;
+}
+
+.feedback li:contains("💡") {
+  background-color: #ffc107; /* Yellow for hint */
+  color: #000;
+}
+
+.feedback li:contains("⚠️") {
+  background-color: #fd7e14; /* Orange for warnings */
+  color: #fff;
+}
+
+.feedback li:contains("🎮") {
+  background-color: #17a2b8; /* Teal for new game info */
+  color: #fff;
+}
+
+h2 {
+  margin-bottom: 10px;
+  color: #ff6f61;
+}
+
+/* Game Over section */
+.App > div > h2 {
+  margin-top: 20px;
+  color: #ff6f61;
+}
+
+.autocomplete {
+  position: relative;
+  width: 300px;
+}
+
+.autocomplete input {
+  width: 100%;
+  padding: 8px;
+  font-size: 16px;
+}
+
+.suggestions {
+  position: absolute;
+  top: 38px;
+  width: 100%;
+  background: white;
+  border: 1px solid #ccc;
+  max-height: 200px;
+  overflow-y: auto;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  z-index: 10;
+}
+
+.suggestions li {
+  padding: 8px;
+  cursor: pointer;
+}
+
+.suggestions li:hover {
+  background: #eee;
+}
