@@ -3,18 +3,16 @@ from flask_cors import CORS
 import random
 import unicodedata
 import uuid
+import hashlib
+from datetime import datetime, timezone
 from similarity_engine import df, X_categories, category_weights, cosine_similarity, position_similarity
 
 app = Flask(__name__)
 CORS(app)
 
-# Infinite Mode In-Memory Sessions Storage
-# Format: { "game_uuid_string": { "player": "Name", "percentiles": {...} } }
+# Session tracking for both Infinite and Daily active instances
 active_games = {}
 
-# ------------------------
-# Normalize names (ignore case + accents)
-# ------------------------
 def normalize_name(name):
     if not name:
         return ""
@@ -22,12 +20,8 @@ def normalize_name(name):
     name = name.encode("ascii", "ignore").decode("utf-8")
     return name.lower().strip()
 
-# Create normalized column once globally
 df["normalized_name"] = df["Player"].apply(normalize_name)
 
-# ------------------------
-# Similarity computation
-# ------------------------
 def compute_percentiles(target_player):
     idx_target = df.index[df["Player"] == target_player][0]
     target_pos = df.iloc[idx_target]["Pos_code"]
@@ -62,44 +56,77 @@ def compute_percentiles(target_player):
 
     return percentile_dict
 
-# ------------------------
-# Routes
-# ------------------------
+# ---------------------------------------------------------------------------
+# ROUTES
+# ---------------------------------------------------------------------------
 
 @app.route("/players", methods=["GET"])
 def get_players():
     return jsonify(sorted(df["Player"].unique().tolist()))
 
+
 @app.route("/new_game", methods=["GET"])
 def new_game():
+    """Infinite Mode: Purely randomized selection on every request."""
     difficulty = request.args.get("difficulty", "hard")
 
-    # 1. Filter the pool inside the route based on difficulty selection
     if difficulty == "easy":
         df_pool = df.sort_values("MP_basic", ascending=False).head(150)
     else:
         df_pool = df.copy()
 
     players_list = df_pool["Player"].tolist()
-    
-    # 2. CRITICAL FIX: Pick the random player here, dynamically, on EVERY call!
     chosen_player = random.choice(players_list)
 
-    # 3. Compute metric mappings dynamically for this precise random instance
     computed_percentiles = compute_percentiles(chosen_player)
     
-    # 4. Save this specific instance linked directly to a fresh tracking ID
     game_id = str(uuid.uuid4())
     active_games[game_id] = {
         "player": chosen_player,
-        "percentiles": computed_percentiles
+        "percentiles": computed_percentiles,
+        "mode": "infinite"
     }
 
     return jsonify({
-        "message": "New game started",
+        "message": "New infinite game started",
         "difficulty": difficulty,
         "game_id": game_id
     })
+
+
+@app.route("/new_daily_game", methods=["GET"])
+def new_daily_game():
+    """Daily Challenge: Deterministic selection based on current global calendar date."""
+    # We use UTC date to ensure a standardized global flip-over time
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    # We force Daily Mode to use the standard complete pool for fair competitive parity
+    players_list = sorted(df["Player"].unique().tolist())
+    
+    # Generate a reproducible pseudo-random index using an MD5 string hash
+    hash_object = hashlib.md5(today_str.encode("utf-8"))
+    hash_hex = hash_object.hexdigest()
+    
+    # Convert hex characters into an integer and index into the player list
+    seed_index = int(hash_hex, 16) % len(players_list)
+    chosen_player = players_list[seed_index]
+
+    computed_percentiles = compute_percentiles(chosen_player)
+    
+    # Generate a temporary browser identifier token for this session layout
+    game_id = f"daily_{today_str}_{str(uuid.uuid4())[:8]}"
+    active_games[game_id] = {
+        "player": chosen_player,
+        "percentiles": computed_percentiles,
+        "mode": "daily"
+    }
+
+    return jsonify({
+        "message": "Daily challenge loaded",
+        "game_id": game_id,
+        "date": today_str
+    })
+
 
 @app.route("/guess", methods=["POST"])
 def guess():
@@ -107,7 +134,6 @@ def guess():
     player_guess = data.get("player")
     game_id = data.get("game_id")
 
-    # Validate active instance session lookup
     if not game_id or game_id not in active_games:
         return jsonify({"error": "Session expired or missing. Please restart."}), 400
 
@@ -124,8 +150,11 @@ def guess():
     actual_name = actual_row["Player"]
 
     if actual_name == hidden_player:
-        # Cleanup memory once a game instance is successfully completed
-        active_games.pop(game_id, None)
+        # NOTE: For daily challenge sync analytics, we keep tracking metadata intact 
+        # instead of popping it, allowing players to look up post-game hints/stats safely
+        if current_game["mode"] == "infinite":
+            active_games.pop(game_id, None)
+            
         return jsonify({
             "correct": True,
             "player": hidden_player
@@ -137,6 +166,7 @@ def guess():
         "correct": False,
         "closeness": closeness
     })
+
 
 @app.route("/hint/<hint_type>", methods=["GET"])
 def hint(hint_type):
@@ -157,6 +187,7 @@ def hint(hint_type):
     else:
         return jsonify({"error": "Invalid hint type"}), 400
 
+
 @app.route("/reveal_answer", methods=["GET"])
 def reveal_answer():
     game_id = request.args.get("game_id")
@@ -165,8 +196,6 @@ def reveal_answer():
         return jsonify({"error": "Game session not found"}), 400
 
     hidden_player = active_games[game_id]["player"]
-    
-    # Remove instance tracking data upon direct resignation
     active_games.pop(game_id, None)
 
     return jsonify({
