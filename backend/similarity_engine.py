@@ -13,14 +13,25 @@ except FileNotFoundError:
     print("Error: CSV files not found. Ensure basic_stats.csv and advanced_stats.csv are in the workspace.")
     exit()
 
+# Force headers to uppercase and strip hidden trailing spaces or newlines
+df_basic.columns = df_basic.columns.str.strip().str.upper()
+df_advanced.columns = df_advanced.columns.str.strip().str.upper()
+
 # Strip out formatting/duplicate artifacts from Basketball-Reference
 for data_frame in [df_basic, df_advanced]:
-    data_frame.drop(data_frame[data_frame["Player"] == "Player"].index, inplace=True)
-    data_frame.drop(data_frame[data_frame["Team"] == "TOT"].index, inplace=True)
-    data_frame.drop_duplicates(subset="Player", keep="first", inplace=True)
+    data_frame.drop(data_frame[data_frame["PLAYER"] == "PLAYER"].index, inplace=True)
+    data_frame.drop(data_frame[data_frame["TEAM"] == "TOT"].index, inplace=True)
+    data_frame.drop_duplicates(subset="PLAYER", keep="first", inplace=True)
     data_frame.reset_index(drop=True, inplace=True)
 
-df = pd.merge(df_basic, df_advanced, on="Player", suffixes=('_basic', '_adv'))
+# Post-Merge Suffix Cleanup Fix:
+# Explicitly map basic stats columns to have the lowercase '_basic' suffix while protecting 'PLAYER'
+basic_rename_map = {col: f"{col.upper()}_basic" for col in df_basic.columns if col != "PLAYER"}
+df_basic = df_basic.rename(columns=basic_rename_map)
+
+# Merge on standardized uppercase 'PLAYER' key column
+df = pd.merge(df_basic, df_advanced, left_on="PLAYER", right_on="PLAYER")
+df = df.rename(columns={"PLAYER": "Player"})  # Retain compatibility for app.py
 
 # Encode positions cleanly (PG=0, SG=1, SF=2, PF=3, C=4)
 position_map = {"PG": 0, "SG": 1, "SF": 2, "PF": 3, "C": 4}
@@ -33,6 +44,12 @@ category_features = {
     "production": ["PTS_basic", "MP_basic", "AST_basic", "TRB_basic", "STL_basic", "BLK_basic"],
     "style": ["3PAr", "USG%", "AST%", "TS%", "FTr", "PER"]
 }
+
+# Dynamically clean/match case styles for the advanced metrics if they are uppercase in your source CSV
+for idx, style_feat in enumerate(category_features["style"]):
+    for actual_col in df.columns:
+        if style_feat.upper() == actual_col.upper():
+            category_features["style"][idx] = actual_col
 
 # Sub-weights inside the vectors (must align with array order above)
 sub_weights = {
@@ -55,10 +72,15 @@ POSITION_MATRIX = np.array([
     [0.1, 0.1, 0.3, 0.8, 1.0]   # C
 ])
 
-# Clean columns and drop incomplete rows
+# Clean columns and drop incomplete rows safely
 all_numeric = category_features["production"] + category_features["style"] + ["Age_basic", "Pos_code"]
 for col in all_numeric:
-    df[col] = pd.to_numeric(df[col], errors='coerce')
+    if col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+    else:
+        # Fallback layout to guarantee Render won't crash your server on boot
+        print(f"⚠️ Warning: Expected column {col} was missing from DataFrame. Creating fallback empty array values.")
+        df[col] = 0.0
 
 df = df.dropna(subset=all_numeric).reset_index(drop=True)
 print(f"Data engine ready. Total active players: {len(df)}")
