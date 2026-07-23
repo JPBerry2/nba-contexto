@@ -57,7 +57,6 @@ function App() {
         setIsLoading(false);
       });
 
-    // Load custom analytics from browser cache memory
     const savedStats = localStorage.getItem("wonof1_contexto_stats");
     if (savedStats) {
       setStats(JSON.parse(savedStats));
@@ -92,7 +91,6 @@ function App() {
   };
 
   const startDailyGame = async () => {
-    // Check if player already completed today's challenge to block double entry
     const todayStr = new Date().toISOString().slice(0, 10);
     if (stats.lastDailyDate === todayStr && stats.dailyWin) {
       alert("🏆 You have already completed today's Daily Challenge! Try Infinite Mode!");
@@ -132,10 +130,10 @@ function App() {
   };
 
   // ---------------------------------------------------------------------------
-  // 3. Submit Guess Logic & LocalStorage Stats Integration
+  // 3. Submit Guess Logic & LocalStorage Stats Integration (FIXED HISTORY)
   // ---------------------------------------------------------------------------
   const handleGuessSubmit = async () => {
-    if (!guess || gameOver) return;
+    if (!guess.trim() || gameOver) return;
 
     try {
       const res = await fetch(`${API}/guess`, {
@@ -145,10 +143,10 @@ function App() {
       });
 
       const data = await res.json();
-      let incomingItem = {};
       const currentGuesses = guessCount + 1;
       setGuessCount(currentGuesses);
 
+      let incomingItem = {};
       if (res.status !== 200) {
         incomingItem = { type: "system", message: `❌ ${data.error}` };
       } else if (data.correct) {
@@ -160,18 +158,21 @@ function App() {
         incomingItem = { type: "guess", player: guess, closeness: data.closeness };
       }
 
-      if (newestGuess) {
-        setSortedHistory((prevHistory) => {
-          const updated = [...prevHistory, newestGuess];
-          return updated.sort((a, b) => {
-            if (a.type === "system") return 1;
-            if (b.type === "system") return -1;
-            return b.closeness - a.closeness;
+      // Push current newestGuess down to history feed seamlessly before updating
+      setNewestGuess((prevNewest) => {
+        if (prevNewest) {
+          setSortedHistory((prevHistory) => {
+            const updated = [...prevHistory, prevNewest];
+            return updated.sort((a, b) => {
+              if (a.type === "system") return 1;
+              if (b.type === "system") return -1;
+              return b.closeness - a.closeness;
+            });
           });
-        });
-      }
+        }
+        return incomingItem;
+      });
 
-      setNewestGuess(incomingItem);
     } catch (err) {
       console.error("Error sending guess:", err);
       setNewestGuess({ type: "system", message: "⚠️ Network tracking pipeline error." });
@@ -199,7 +200,6 @@ function App() {
         }
       }
     } else {
-      // Track separate metrics for general play sessions if desired
       if (isWin) {
         updated.totalGuessesInWins += finalGuessCount;
         updated.gamesWon += 1;
@@ -260,16 +260,10 @@ function App() {
     return hintsList.some((h) => h.type === "team");
   };
 
-  // ---------------------------------------------------------------------------
-  // 5. Submit Problem/Concern Box (To Free Formspree Endpoint or Local Logging)
-  // ---------------------------------------------------------------------------
   const handleFeedbackSubmit = (e) => {
     e.preventDefault();
     if (!feedbackText.trim()) return;
 
-    // Log internally or update success banner state.
-    // Tip: Paste your custom Formspree URL inside a fetch call here later!
-    console.log("WonOf1 Game Feedback submitted:", feedbackText);
     setFeedbackSuccess(true);
     setFeedbackText("");
     setTimeout(() => {
@@ -278,9 +272,6 @@ function App() {
     }, 3000);
   };
 
-  // ---------------------------------------------------------------------------
-  // 6. UI Render Feed Format
-  // ---------------------------------------------------------------------------
   const renderFeedbackItem = (item, isNewest = false) => {
     if (!item) return null;
     if (item.type === "system") {
@@ -289,9 +280,9 @@ function App() {
 
     return (
       <div className={`feedback-item ${isNewest ? "newest-guess" : ""}`} style={{ marginBottom: "15px" }}>
-        <div style={{ display: "flex", justifyContent: "between", fontWeight: "bold", color: "#f8f9fa", padding: "0 10px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", color: "#f8f9fa", padding: "0 10px" }}>
           <span>{item.player} {isNewest && "✨"}</span>
-          <span style={{ marginLeft: "auto", color: getColor(item.closeness) }}>{item.closeness}/100</span>
+          <span style={{ color: getColor(item.closeness) }}>{item.closeness}/100</span>
         </div>
         <div style={{ width: "100%", height: "14px", background: "#343a40", borderRadius: "7px", margin: "6px 0", overflow: "hidden", border: "1px solid #495057" }}>
           <div style={{ width: `${item.closeness}%`, height: "100%", background: getColor(item.closeness), transition: "width 0.4s ease" }} />
@@ -306,7 +297,7 @@ function App() {
       {/* BRAND HEADER SECTION */}
       <div style={{ borderBottom: "2px solid #212529", paddingBottom: "15px", marginBottom: "20px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "12px" }}>
-          <h1 style={{ fontSize: "32px", fontWeight: "900", tracking: "-1px", background: "linear-gradient(45deg, #ff4757, #ffa502)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", margin: 0 }}>
+          <h1 style={{ fontSize: "32px", fontWeight: "900", background: "linear-gradient(45deg, #ff4757, #ffa502)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", margin: 0 }}>
             WonOf1 CONTEXTO
           </h1>
           <button onClick={() => setShowInstructions(!showInstructions)} style={{ borderRadius: "50%", width: "28px", height: "28px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontWeight: "bold", color: "#fff", backgroundColor: "#2f3542", border: "1px solid #57606f" }}>?</button>
@@ -361,7 +352,7 @@ function App() {
             <button onClick={startDailyGame} style={{ padding: "18px", fontSize: "18px", cursor: "pointer", background: "linear-gradient(135deg, #ffa502, #ff7f50)", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", boxShadow: "0 4px 15px rgba(255,165,0,0.2)" }}>
               📅 Play Daily Challenge Mode
             </button>
-            <div style={{ fontSize: "12px", color: "#747d8c", marginTop: "-8px" }}>Unified global seed track. Everyone on earth plays the exact same profile puzzle tracking list today.</div>
+            <div style={{ fontSize: "12px", color: "#747d8c", marginTop: "-8px" }}>Unified global seed track. Everyone plays the exact same profile puzzle tracking list today.</div>
             
             <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
               <button onClick={() => startInfiniteGame("easy")} style={{ flex: 1, padding: "12px", cursor: "pointer", background: "#2ed573", color: "white", border: "none", borderRadius: "6px", fontWeight: "bold" }}>
@@ -391,8 +382,8 @@ function App() {
           {!gameOver && (
             <>
               {/* GUESS SEARCH AUTOCOMPLETE ENGINE */}
-              <div style={{ marginBottom: "25px" }}>
-                <div ref={autocompleteRef} style={{ position: "relative", display: "inline-block", width: "75%" }}>
+              <div style={{ marginBottom: "25px", display: "flex", justifyContent: "space-between" }}>
+                <div ref={autocompleteRef} style={{ position: "relative", width: "75%", textAlign: "left" }}>
                   <input
                     type="text"
                     value={guess}
@@ -425,7 +416,7 @@ function App() {
                   )}
                 </div>
 
-                <button onClick={handleGuessSubmit} disabled={!guess} style={{ marginLeft: "3%", width: "22%", padding: "12px 0", background: "#ffa502", color: "#121212", border: "none", borderRadius: "6px", fontWeight: "bold", fontSize: "16px", cursor: "pointer" }}>
+                <button onClick={handleGuessSubmit} disabled={!guess.trim()} style={{ width: "22%", padding: "12px 0", background: "#ffa502", color: "#121212", border: "none", borderRadius: "6px", fontWeight: "bold", fontSize: "16px", cursor: "pointer" }}>
                   Fire
                 </button>
               </div>
@@ -498,7 +489,7 @@ function App() {
 
         {showFeedback && (
           <form onSubmit={handleFeedbackSubmit} style={{ marginTop: "15px", background: "#1e272e", padding: "15px", borderRadius: "8px", border: "1px solid #2f3542", textAlign: "left" }}>
-            <label style={{ display: "block", fontSize: "13px", color: "#a4b0be", marginBottom: "8px" }}> Describe the concern (e.g., incorrect active player stats, bugs, UI glitches):</label>
+            <label style={{ display: "block", fontSize: "13px", color: "#a4b0be", marginBottom: "8px" }}>Describe the concern (e.g., incorrect active player stats, bugs, UI glitches):</label>
             <textarea value={feedbackText} onChange={(e) => setFeedbackText(e.target.value)} placeholder="Type issue context here..." style={{ width: "100%", height: "70px", padding: "8px", borderRadius: "4px", background: "#2f3542", color: "#fff", border: "1px solid #485460", boxSizing: "border-box", fontSize: "14px" }} />
             <button type="submit" style={{ marginTop: "10px", background: "#ff4757", color: "#fff", border: "none", padding: "6px 16px", borderRadius: "4px", fontWeight: "bold", cursor: "pointer" }}>
               Submit Dispatch Report

@@ -4,7 +4,9 @@ import random
 import unicodedata
 import uuid
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
+import os
+
 # Import matching the exact structures exported by your fixed similarity_engine.py
 from similarity_engine import df, X_categories, MACRO_WEIGHTS, sub_weights, weighted_cosine_similarity, calculate_physical_sim
 
@@ -100,8 +102,8 @@ def new_game():
 @app.route("/new_daily_game", methods=["GET"])
 def new_daily_game():
     """Daily Challenge: Deterministic selection based on current global calendar date."""
-    # Stable fallback for universal UTC date calculation string formats
-    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    # Use timezone-aware UTC date string to prevent server desync bugs
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     
     players_list = sorted(df["Player"].unique().tolist())
     
@@ -176,14 +178,17 @@ def hint(hint_type):
     hidden_player = active_games[game_id]["player"]
     info = df[df["Player"] == hidden_player].iloc[0]
 
-    if hint_type == "age":
-        return jsonify({"hint": str(info["Age_basic"])})
-    elif hint_type == "position":
-        return jsonify({"hint": str(info["Pos_basic"])})
-    elif hint_type == "team":
-        return jsonify({"hint": str(info["Team_basic"])})
-    else:
-        return jsonify({"error": "Invalid hint type"}), 400
+    try:
+        if hint_type == "age":
+            return jsonify({"hint": str(info.get("Age_basic", "Unknown"))})
+        elif hint_type == "position":
+            return jsonify({"hint": str(info.get("Pos_basic", "Unknown"))})
+        elif hint_type == "team":
+            return jsonify({"hint": str(info.get("Team_basic", "Unknown"))})
+        else:
+            return jsonify({"error": "Invalid hint type"}), 400
+    except Exception as e:
+        return jsonify({"error": f"Could not fetch hint: {str(e)}"}), 500
 
 
 @app.route("/reveal_answer", methods=["GET"])
@@ -200,10 +205,8 @@ def reveal_answer():
         "player": hidden_player
     })
 
-import os
 
 if __name__ == '__main__':
-    # Default to 10000 for standard virtual environment binding instances
     port = int(os.environ.get("PORT", 10000))
     print(f"🚀 Deploy Sync: Binding explicitly to port {port}...")
     app.run(host='0.0.0.0', port=port, debug=False)
