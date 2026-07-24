@@ -18,6 +18,7 @@ function App() {
   const [newestGuess, setNewestGuess] = useState(null);
   const [sortedHistory, setSortedHistory] = useState([]);
   const [guessCount, setGuessCount] = useState(0);
+  const [topMatches, setTopMatches] = useState([]); // 🔥 Added state for top 3 matches
 
   // UX & Branding Feature States
   const [gameStarted, setGameStarted] = useState(false);
@@ -115,6 +116,7 @@ function App() {
     setNewestGuess({ type: "system", message: welcomeMessage });
     setSortedHistory([]);
     setHintsList([]);
+    setTopMatches([]);
     setGuessCount(0);
     setGameOver(false);
     setGameStarted(true);
@@ -129,7 +131,6 @@ function App() {
     return `hsl(${hue}, 85%, 45%)`;
   };
 
-  // Helper to map closeness score to hot/cold indicators & labels
   const getTemperatureIndicator = (value) => {
     if (value >= 80) return { icon: "🔥", label: "Blazing Hot!" };
     if (value >= 50) return { icon: "🌡️", label: "Warm Match" };
@@ -160,6 +161,7 @@ function App() {
       } else if (data.correct) {
         incomingItem = { type: "system", message: `🎉 WonOf1 Absolute Match! You found ${data.player} in ${currentGuesses} guesses!` };
         setGameOver(true);
+        if (data.top_matches) setTopMatches(data.top_matches);
         updateUserStats(true, currentGuesses);
         setShowStats(true);
       } else {
@@ -248,6 +250,7 @@ function App() {
       const res = await fetch(`${API}/reveal_answer?game_id=${gameId}`);
       const data = await res.json();
       if (data.player) mysteryPlayer = data.player;
+      if (data.top_matches) setTopMatches(data.top_matches);
     } catch (err) {
       console.error("Error revealing answer:", err);
     }
@@ -480,10 +483,22 @@ function App() {
         </>
       )}
 
-      {/* GAME RUNTIME TERMINATION DISPLAY VIEW CARD (WITH INSTANT PLAY AGAIN BUTTON) */}
+      {/* GAME RUNTIME TERMINATION DISPLAY VIEW CARD (WITH TOP 3 MATCHES & INSTANT PLAY AGAIN BUTTON) */}
       {gameOver && (
-        <div style={{ background: "#1e272e", padding: "25px", borderRadius: "10px", margin: "20px 0", border: "2px solid #ffa502" }}>
-          <h2 style={{ margin: "0 0 15px 0", color: "#ffa502" }}>Battle Session Finished!</h2>
+        <div style={{ background: "#1e272e", padding: "25px", borderRadius: "10px", margin: "20px 0", border: "2px solid #ffa502", textAlign: "left" }}>
+          <h2 style={{ margin: "0 0 15px 0", color: "#ffa502", textAlign: "center" }}>Battle Session Finished!</h2>
+          
+          {topMatches.length > 0 && (
+            <div style={{ background: "#2f3542", padding: "12px 16px", borderRadius: "6px", marginBottom: "20px", border: "1px solid #57606f" }}>
+              <h4 style={{ margin: "0 0 8px 0", color: "#ffa502", fontSize: "14px" }}>🔥 Top 3 Statistically Closest Matches:</h4>
+              <ol style={{ margin: 0, paddingLeft: "20px", color: "#fff", fontSize: "14px", lineHeight: "1.5" }}>
+                {topMatches.map((match, idx) => (
+                  <li key={idx}><strong>{match}</strong></li>
+                ))}
+              </ol>
+            </div>
+          )}
+
           <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
             {gameMode === "infinite" && (
               <button onClick={() => startInfiniteGame(difficulty)} style={{ padding: "12px 20px", background: "#2ed573", color: "#fff", border: "none", borderRadius: "6px", fontSize: "15px", fontWeight: "bold", cursor: "pointer" }}>

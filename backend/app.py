@@ -151,12 +151,17 @@ def guess():
     actual_name = actual_row["Player"]
 
     if actual_name == hidden_player:
+        # Extract top 3 closest matches (excluding the player themselves)
+        sorted_matches = sorted(percentiles.items(), key=lambda x: x[1], reverse=True)
+        top_matches = [m[0] for m in sorted_matches if m[0] != hidden_player][:3]
+
         if current_game["mode"] == "infinite":
             active_games.pop(game_id, None)
             
         return jsonify({
             "correct": True,
-            "player": hidden_player
+            "player": hidden_player,
+            "top_matches": top_matches
         })
 
     closeness = percentiles.get(actual_name, 0)
@@ -195,32 +200,6 @@ def hint(hint_type):
             return jsonify({"error": "Invalid hint type"}), 400
     except Exception as e:
         return jsonify({"error": f"Could not fetch hint: {str(e)}"}), 500
-    game_id = request.args.get("game_id")
-    
-    if not game_id or game_id not in active_games:
-        return jsonify({"error": "Game not found"}), 400
-
-    hidden_player = active_games[game_id]["player"]
-    info = df[df["Player"] == hidden_player].iloc[0]
-
-    try:
-        if hint_type == "age":
-            val = info.get("Age_basic", info.get("AGE_BASIC", info.get("Age", info.get("AGE", None))))
-            if pd.isna(val) or val == 0 or val == 0.0:
-                hint_str = "Unknown"
-            else:
-                hint_str = str(int(float(val)))
-            return jsonify({"hint": hint_str})
-        elif hint_type == "position":
-            val = info.get("Pos_basic", info.get("POS_BASIC", info.get("Pos", info.get("POS", "Unknown"))))
-            return jsonify({"hint": str(val)})
-        elif hint_type == "team":
-            val = info.get("Team_basic", info.get("TEAM_BASIC", info.get("Team", info.get("TEAM", "Unknown"))))
-            return jsonify({"hint": str(val)})
-        else:
-            return jsonify({"error": "Invalid hint type"}), 400
-    except Exception as e:
-        return jsonify({"error": f"Could not fetch hint: {str(e)}"}), 500
 
 
 @app.route("/reveal_answer", methods=["GET"])
@@ -230,11 +209,19 @@ def reveal_answer():
     if not game_id or game_id not in active_games:
         return jsonify({"error": "Game session not found"}), 400
 
-    hidden_player = active_games[game_id]["player"]
+    current_game = active_games[game_id]
+    hidden_player = current_game["player"]
+    percentiles = current_game["percentiles"]
+    
+    # Extract top 3 closest matches on reveal/forfeit
+    sorted_matches = sorted(percentiles.items(), key=lambda x: x[1], reverse=True)
+    top_matches = [m[0] for m in sorted_matches if m[0] != hidden_player][:3]
+
     active_games.pop(game_id, None)
 
     return jsonify({
-        "player": hidden_player
+        "player": hidden_player,
+        "top_matches": top_matches
     })
 
 
