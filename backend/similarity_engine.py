@@ -27,7 +27,7 @@ df_basic = df_basic.rename(columns={col: f"{col.upper()}_basic" for col in df_ba
 df = pd.merge(df_basic, df_advanced, left_on="PLAYER", right_on="PLAYER")
 df = df.rename(columns={"PLAYER": "Player"})
 
-# Sample-size filter to weed out low-minute noise (e.g., must have played >= 15 games and >= 15 MPG)
+# Sample-size filter to weed out low-minute noise
 g_col = next((c for c in df.columns if c in ["G_BASIC", "G", "GP"] or "G_" in c), None)
 mp_col = next((c for c in df.columns if c in ["MP_BASIC", "MP"] or "MP_" in c), None)
 
@@ -104,7 +104,7 @@ def normalize_category(dataframe, features):
 X_categories = {cat: normalize_category(df, feats) for cat, feats in category_features.items()}
 
 # ------------------------
-# 4. SIMILARITY MATH (HYBRID: SHAPE + VOLUME)
+# 4. SIMILARITY MATH
 # ------------------------
 def calculate_physical_sim(player_a, player_b):
     return float(POSITION_MATRIX[int(player_a["POS_CODE"])][int(player_b["POS_CODE"])])
@@ -122,69 +122,70 @@ def hybrid_similarity(a, b, weights):
     
     return (0.60 * cosine_sim) + (0.40 * euclid_sim)
 
-# ------------------------
-# 5. CLI TESTING ENTRY POINT WITH HARD 99.0 CEILING
-# ------------------------
-def find_similar(player_name, top_n=5):
-    matches = df[df["Player"].str.upper() == player_name.upper()]
-    if matches.empty:
-        print(f"Player '{player_name}' not found.")
-        return
-
-    idx_target = matches.index[0]
-    target_data = df.iloc[idx_target]
+# Helper function to compute raw score between any two dataset indices
+def compute_raw_score(idx_a, idx_b):
+    target_data = df.iloc[idx_a]
+    comp_data = df.iloc[idx_b]
     
-    # Calculate self-match raw score to serve as the absolute theoretical 100% benchmark reference
-    sim_physical_self = calculate_physical_sim(target_data, target_data)
-    sim_production_self = hybrid_similarity(X_categories["production"][idx_target], X_categories["production"][idx_target], sub_weights["production"])
-    sim_style_self = hybrid_similarity(X_categories["style"][idx_target], X_categories["style"][idx_target], sub_weights["style"])
-    sim_aesthetic_self = hybrid_similarity(X_categories["aesthetic"][idx_target], X_categories["aesthetic"][idx_target], sub_weights["aesthetic"])
+    sim_physical = calculate_physical_sim(target_data, comp_data)
+    sim_production = hybrid_similarity(X_categories["production"][idx_a], X_categories["production"][idx_b], sub_weights["production"])
+    sim_style = hybrid_similarity(X_categories["style"][idx_a], X_categories["style"][idx_b], sub_weights["style"])
+    sim_aesthetic = hybrid_similarity(X_categories["aesthetic"][idx_a], X_categories["aesthetic"][idx_b], sub_weights["aesthetic"])
     
-    self_raw_score = (
-        (MACRO_WEIGHTS["physical"] * sim_physical_self) +
-        (MACRO_WEIGHTS["production"] * sim_production_self) +
-        (MACRO_WEIGHTS["style"] * sim_style_self) +
-        (MACRO_WEIGHTS["aesthetic"] * sim_aesthetic_self)
+    return (
+        (MACRO_WEIGHTS["physical"] * sim_physical) +
+        (MACRO_WEIGHTS["production"] * sim_production) +
+        (MACRO_WEIGHTS["style"] * sim_style) +
+        (MACRO_WEIGHTS["aesthetic"] * sim_aesthetic)
     )
 
-    similarities = []
-
-    # Pass 1: Collect raw macro scores and scale directly against self-match ceiling with a hard 99.0 limit
-    for i in range(len(df)):
-        if i == idx_target:
-            continue
-            
-        comp_data = df.iloc[i]
-        
-        sim_physical = calculate_physical_sim(target_data, comp_data)
-        sim_production = hybrid_similarity(X_categories["production"][idx_target], X_categories["production"][i], sub_weights["production"])
-        sim_style = hybrid_similarity(X_categories["style"][idx_target], X_categories["style"][i], sub_weights["style"])
-        sim_aesthetic = hybrid_similarity(X_categories["aesthetic"][idx_target], X_categories["aesthetic"][i], sub_weights["aesthetic"])
-        
-        raw_score = (
-            (MACRO_WEIGHTS["physical"] * sim_physical) +
-            (MACRO_WEIGHTS["production"] * sim_production) +
-            (MACRO_WEIGHTS["style"] * sim_style) +
-            (MACRO_WEIGHTS["aesthetic"] * sim_aesthetic)
-        )
-        
-        # Scale score as a percentage of the self-match ceiling, capped strictly at 99.0 max
-        if self_raw_score > 0:
-            raw_ratio = raw_score / self_raw_score
-            scaled_score = min(99.0, max(1.0, raw_ratio * 99.0))
-        else:
-            scaled_score = 1.0
-            
-        similarities.append((df.iloc[i]["Player"], scaled_score))
-
-    similarities.sort(key=lambda x: x[1], reverse=True)
+# ------------------------
+# 5. GAME LOGIC: EVALUATE A USER'S GUESS
+# ------------------------
+def evaluate_guess(target_player_name, guessed_player_name):
+    """
+    Evaluates a user's guess against the target player.
+    Returns 100.0 ONLY if they match. Otherwise, calculates similarity and caps at 99.0 max.
+    """
+    target_match = df[df["Player"].str.upper() == target_player_name.upper()]
+    guess_match = df[df["Player"].str.upper() == guessed_player_name.upper()]
     
-    # Print the results cleanly with 100.0 reserved exclusively for the exact target match
-    print(f"\nTop {top_n} most similar to {target_data['Player']} (Strict 1-99 Scale):")
-    print(f">> {target_data['Player']} (Exact Answer) — Score: 100.0 / 100")
+    if target_match.empty:
+        return f"Target player '{target_player_name}' not found in database."
+    if guess_match.empty:
+        return f"Guessed player '{guessed_player_name}' not found in database."
+        
+    idx_target = target_match.index[0]
+    idx_guess = guess_match.index[0]
     
-    for name, score in similarities[:top_n]:
-        print(f"{name} — Score: {round(score, 1)} / 100")
+    # RULE: Exact match gets 100.0 flat.
+    if idx_target == idx_guess:
+        return 100.0
+        
+    # Calculate self-match benchmark for scaling context
+    self_raw_score = compute_raw_score(idx_target, idx_target)
+    guess_raw_score = compute_raw_score(idx_target, idx_guess)
+    
+    if self_raw_score > 0:
+        raw_ratio = guess_raw_score / self_raw_score
+        # STRICT CEILING: min(99.0, ...) ensures a wrong guess can never hit 100
+        scaled_score = min(99.0, max(1.0, raw_ratio * 99.0))
+    else:
+        scaled_score = 1.0
+        
+    return round(scaled_score, 1)
 
+# ------------------------
+# 6. TESTING ENTRY POINT
+# ------------------------
 if __name__ == "__main__":
-    find_similar("Stephen Curry", top_n=5)
+    target = "Stephen Curry"
+    
+    print(f"\n--- Testing Game Guess Logic for Target: {target} ---")
+    
+    # Test correct guess
+    print(f"Guessing 'Stephen Curry': Score -> {evaluate_guess(target, 'Stephen Curry')} / 100")
+    
+    # Test incorrect guesses (will now correctly max out at 99.0 or lower)
+    print(f"Guessing 'Donovan Mitchell': Score -> {evaluate_guess(target, 'Donovan Mitchell')} / 100")
+    print(f"Guessing 'Trae Young': Score -> {evaluate_guess(target, 'Trae Young')} / 100")
