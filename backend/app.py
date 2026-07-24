@@ -179,8 +179,12 @@ def hint(hint_type):
 
     try:
         if hint_type == "age":
-            val = info.get("Age_basic", info.get("Age", "Unknown"))
-            return jsonify({"hint": str(val)})
+            val = info.get("Age_basic", info.get("AGE_BASIC", info.get("Age", info.get("AGE", None))))
+            if pd.isna(val) or val == 0 or val == 0.0:
+                hint_str = "Unknown"
+            else:
+                hint_str = str(int(float(val)))
+            return jsonify({"hint": hint_str})
         elif hint_type == "position":
             val = info.get("Pos_basic", info.get("POS_BASIC", info.get("Pos", info.get("POS", "Unknown"))))
             return jsonify({"hint": str(val)})
