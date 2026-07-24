@@ -10,7 +10,6 @@ import pandas as pd
 
 # Import matching the exact structures exported by your similarity_engine.py
 from similarity_engine import df, X_categories, MACRO_WEIGHTS, sub_weights, weighted_cosine_similarity, calculate_physical_sim
-
 app = Flask(__name__)
 CORS(app)
 
