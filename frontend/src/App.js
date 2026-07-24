@@ -129,8 +129,16 @@ function App() {
     return `hsl(${hue}, 85%, 45%)`;
   };
 
+  // Helper to map closeness score to hot/cold indicators & labels
+  const getTemperatureIndicator = (value) => {
+    if (value >= 80) return { icon: "🔥", label: "Blazing Hot!" };
+    if (value >= 50) return { icon: "🌡️", label: "Warm Match" };
+    if (value >= 25) return { icon: "❄️", label: "Cooling Down" };
+    return { icon: "🧊", label: "Freezing Cold" };
+  };
+
   // ---------------------------------------------------------------------------
-  // 3. Submit Guess Logic & LocalStorage Stats Integration (FIXED HISTORY)
+  // 3. Submit Guess Logic & LocalStorage Stats Integration
   // ---------------------------------------------------------------------------
   const handleGuessSubmit = async () => {
     if (!guess.trim() || gameOver) return;
@@ -158,7 +166,6 @@ function App() {
         incomingItem = { type: "guess", player: guess, closeness: data.closeness };
       }
 
-      // Push current newestGuess down to history feed seamlessly before updating
       setNewestGuess((prevNewest) => {
         if (prevNewest) {
           setSortedHistory((prevHistory) => {
@@ -260,16 +267,33 @@ function App() {
     return hintsList.some((h) => h.type === "team");
   };
 
-  const handleFeedbackSubmit = (e) => {
+  // ---------------------------------------------------------------------------
+  // 5. Formspree Feedback Integration
+  // ---------------------------------------------------------------------------
+  const handleFeedbackSubmit = async (e) => {
     e.preventDefault();
     if (!feedbackText.trim()) return;
 
-    setFeedbackSuccess(true);
-    setFeedbackText("");
-    setTimeout(() => {
-      setFeedbackSuccess(false);
-      setShowFeedback(false);
-    }, 3000);
+    try {
+      const response = await fetch("https://formspree.io/f/xeeyrkqg", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: feedbackText, mode: gameMode })
+      });
+
+      if (response.ok) {
+        setFeedbackSuccess(true);
+        setFeedbackText("");
+        setTimeout(() => {
+          setFeedbackSuccess(false);
+          setShowFeedback(false);
+        }, 3000);
+      } else {
+        alert("⚠️ Failed to send report. Please try again.");
+      }
+    } catch (err) {
+      console.error("Error submitting feedback:", err);
+    }
   };
 
   const renderFeedbackItem = (item, isNewest = false) => {
@@ -278,11 +302,16 @@ function App() {
       return <div className={`feedback-item system ${isNewest ? "newest" : ""}`}>{item.message}</div>;
     }
 
+    const temp = getTemperatureIndicator(item.closeness);
+
     return (
       <div className={`feedback-item ${isNewest ? "newest-guess" : ""}`} style={{ marginBottom: "15px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", color: "#f8f9fa", padding: "0 10px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: "bold", color: "#f8f9fa", padding: "0 10px" }}>
           <span>{item.player} {isNewest && "✨"}</span>
-          <span style={{ color: getColor(item.closeness) }}>{item.closeness}/100</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <span style={{ fontSize: "16px" }} title={temp.label}>{temp.icon}</span>
+            <span style={{ color: getColor(item.closeness) }}>{item.closeness}/100</span>
+          </div>
         </div>
         <div style={{ width: "100%", height: "14px", background: "#343a40", borderRadius: "7px", margin: "6px 0", overflow: "hidden", border: "1px solid #495057" }}>
           <div style={{ width: `${item.closeness}%`, height: "100%", background: getColor(item.closeness), transition: "width 0.4s ease" }} />
@@ -304,6 +333,13 @@ function App() {
           <button onClick={() => setShowStats(!showStats)} style={{ borderRadius: "6px", padding: "4px 8px", cursor: "pointer", fontSize: "14px", fontWeight: "bold", color: "#fff", backgroundColor: "#2f3542", border: "1px solid #57606f" }}>📊 Stats</button>
         </div>
         <p style={{ margin: "5px 0 0 0", fontSize: "12px", color: "#a4b0be", letterSpacing: "1px" }}>POWERED BY WONOF1 CREATOR ARCHITECTURE</p>
+        
+        {/* YOUTUBE CHANNEL PROMO BANNER LINK */}
+        <div style={{ marginTop: "12px" }}>
+          <a href="https://www.youtube.com/@WonOf1" target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "#ff0000", color: "#ffffff", padding: "5px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold", textDecoration: "none", boxShadow: "0 2px 8px rgba(255,0,0,0.3)" }}>
+            🔴 Subscribe to WonOf1 on YouTube
+          </a>
+        </div>
       </div>
 
       {/* MODAL VIEW SYSTEM ACCORDIONS */}
@@ -444,13 +480,20 @@ function App() {
         </>
       )}
 
-      {/* GAME RUNTIME TERMINATION DISPLAY VIEW CARD */}
+      {/* GAME RUNTIME TERMINATION DISPLAY VIEW CARD (WITH INSTANT PLAY AGAIN BUTTON) */}
       {gameOver && (
         <div style={{ background: "#1e272e", padding: "25px", borderRadius: "10px", margin: "20px 0", border: "2px solid #ffa502" }}>
           <h2 style={{ margin: "0 0 15px 0", color: "#ffa502" }}>Battle Session Finished!</h2>
-          <button onClick={() => { setGameStarted(false); setGameMode(null); }} style={{ padding: "12px 28px", background: "linear-gradient(45deg, #2ed573, #1e90ff)", color: "#fff", border: "none", borderRadius: "6px", fontSize: "16px", fontWeight: "bold", cursor: "pointer" }}>
-            Return to Arena Lounge
-          </button>
+          <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
+            {gameMode === "infinite" && (
+              <button onClick={() => startInfiniteGame(difficulty)} style={{ padding: "12px 20px", background: "#2ed573", color: "#fff", border: "none", borderRadius: "6px", fontSize: "15px", fontWeight: "bold", cursor: "pointer" }}>
+                🔄 Play Again ({difficulty.toUpperCase()})
+              </button>
+            )}
+            <button onClick={() => { setGameStarted(false); setGameMode(null); }} style={{ padding: "12px 20px", background: "#1e90ff", color: "#fff", border: "none", borderRadius: "6px", fontSize: "15px", fontWeight: "bold", cursor: "pointer" }}>
+              🏠 Arena Lounge
+            </button>
+          </div>
         </div>
       )}
 
