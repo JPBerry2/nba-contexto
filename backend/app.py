@@ -6,6 +6,7 @@ import uuid
 import hashlib
 from datetime import datetime, timezone
 import os
+import pandas as pd
 
 # Import matching the exact structures exported by your similarity_engine.py
 from similarity_engine import df, X_categories, MACRO_WEIGHTS, sub_weights, weighted_cosine_similarity, calculate_physical_sim
@@ -165,6 +166,7 @@ def guess():
         "closeness": closeness
     })
 
+
 @app.route("/hint/<hint_type>", methods=["GET"])
 def hint(hint_type):
     game_id = request.args.get("game_id")
@@ -177,11 +179,10 @@ def hint(hint_type):
 
     try:
         if hint_type == "age":
-            val = info.get("Age_basic", info.get("AGE_BASIC", info.get("Age", info.get("AGE", info.get("AGE_basic", None)))))
+            val = info.get("Age_basic", info.get("AGE_BASIC", info.get("Age", info.get("AGE", None))))
             if pd.isna(val) or val == 0 or val == 0.0:
                 hint_str = "Unknown"
             else:
-                # Convert float like 24.0 to clean integer string "24"
                 hint_str = str(int(float(val)))
             return jsonify({"hint": hint_str})
         elif hint_type == "position":
@@ -189,29 +190,6 @@ def hint(hint_type):
             return jsonify({"hint": str(val)})
         elif hint_type == "team":
             val = info.get("Team_basic", info.get("TEAM_BASIC", info.get("Team", info.get("TEAM", "Unknown"))))
-            return jsonify({"hint": str(val)})
-        else:
-            return jsonify({"error": "Invalid hint type"}), 400
-    except Exception as e:
-        return jsonify({"error": f"Could not fetch hint: {str(e)}"}), 500
-
-    game_id = request.args.get("game_id")
-    
-    if not game_id or game_id not in active_games:
-        return jsonify({"error": "Game not found"}), 400
-
-    hidden_player = active_games[game_id]["player"]
-    info = df[df["Player"] == hidden_player].iloc[0]
-
-    try:
-        if hint_type == "age":
-            val = info.get("Age_basic", info.get("Age", "Unknown"))
-            return jsonify({"hint": str(val)})
-        elif hint_type == "position":
-            val = info.get("Pos_basic", info.get("Pos", "Unknown"))
-            return jsonify({"hint": str(val)})
-        elif hint_type == "team":
-            val = info.get("Team_basic", info.get("Team", "Unknown"))
             return jsonify({"hint": str(val)})
         else:
             return jsonify({"error": "Invalid hint type"}), 400
