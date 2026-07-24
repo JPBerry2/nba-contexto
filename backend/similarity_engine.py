@@ -45,7 +45,6 @@ df["Pos_code"] = df.get(pos_col, "SF").map(position_map).fillna(2).astype(int)
 # ------------------------
 # 2. FEATURE ARCHITECTURE & WEIGHTS
 # ------------------------
-# Replaced age and added scoring efficiency/volume metrics (PTS per game and eFG% / points-oriented elements)
 category_features = {
     "production": ["TRB%", "AST%", "STL%", "BLK%"],
     "style": ["3PAr", "USG%", "OBPM", "DBPM"],
@@ -61,11 +60,11 @@ for cat, feats in category_features.items():
 sub_weights = {
     "production": np.array([0.30, 0.30, 0.20, 0.20]),
     "style": np.array([0.30, 0.30, 0.20, 0.20]),
-    "aesthetic": np.array([0.30, 0.25, 0.15, 0.30])  # Adjusted sub-weights to cleanly factor in scoring volume
+    "aesthetic": np.array([0.30, 0.25, 0.15, 0.30])
 }
 
 MACRO_WEIGHTS = {
-    "physical": 0.10,     # Now purely based on position (since age was removed)
+    "physical": 0.10,
     "production": 0.35,
     "style": 0.35,
     "aesthetic": 0.20
@@ -108,28 +107,23 @@ X_categories = {cat: normalize_category(df, feats) for cat, feats in category_fe
 # 4. SIMILARITY MATH (HYBRID: SHAPE + VOLUME)
 # ------------------------
 def calculate_physical_sim(player_a, player_b):
-    """Calculates physical similarity using position matrix only (Age removed)"""
     return float(POSITION_MATRIX[int(player_a["POS_CODE"])][int(player_b["POS_CODE"])])
 
 def hybrid_similarity(a, b, weights):
-    """Blends Cosine Similarity (shape) with Euclidean Distance (volume/magnitude)"""
     a_w = a * weights
     b_w = b * weights
     
-    # 1. Shape component (Cosine)
     denom = np.linalg.norm(a_w) * np.linalg.norm(b_w)
     cosine_sim = np.dot(a_w, b_w) / denom if denom != 0 else 0.0
     cosine_sim = max(0.0, cosine_sim)
     
-    # 2. Magnitude/Volume component (Euclidean)
     dist = np.linalg.norm(a_w - b_w)
-    euclid_sim = 1.0 / (1.0 + 0.4 * dist)  # Decay function maps distance to [0, 1]
+    euclid_sim = 1.0 / (1.0 + 0.4 * dist)
     
-    # Blend: 60% shape alignment, 40% absolute volume matching
     return (0.60 * cosine_sim) + (0.40 * euclid_sim)
 
 # ------------------------
-# 5. CLI TESTING ENTRY POINT WITH GLOBAL STRETCH
+# 5. CLI TESTING ENTRY POINT WITH CAPPED 1-99 SCALE
 # ------------------------
 def find_similar(player_name, top_n=5):
     matches = df[df["Player"].str.upper() == player_name.upper()]
@@ -164,7 +158,7 @@ def find_similar(player_name, top_n=5):
 
     raw_scores = np.array(raw_scores)
     
-    # Pass 2: Global Min-Max Stretch across the active dataset pool (ignoring self)
+    # Pass 2: Global Min-Max Stretch strictly capped between 1.0 and 99.0
     valid_scores = raw_scores[raw_scores != -999]
     min_s, max_s = valid_scores.min(), valid_scores.max()
     
@@ -172,16 +166,21 @@ def find_similar(player_name, top_n=5):
     for i in range(len(df)):
         if i == idx_target:
             continue
-        # Stretch raw score cleanly from 1.0 to 100.0 over the dataset bounds
+        
+        # Scale cleanly from 1.0 to 99.0 so 100 is uniquely reserved for the exact player query match
         if max_s - min_s == 0:
             scaled_score = 50.0
         else:
-            scaled_score = 1.0 + (raw_scores[i] - min_s) * (99.0 / (max_s - min_s))
+            scaled_score = 1.0 + (raw_scores[i] - min_s) * (98.0 / (max_s - min_s))
             
         similarities.append((df.iloc[i]["Player"], scaled_score))
 
     similarities.sort(key=lambda x: x[1], reverse=True)
-    print(f"\nTop {top_n} most similar to {target_data['Player']} (Stretched 1-100 Scale):")
+    
+    # Print the absolute self-match anchor first to explicitly preserve the 100/100 ceiling
+    print(f"\nTop {top_n} most similar to {target_data['Player']} (Capped 1-99 Scale):")
+    print(f">> {target_data['Player']} (Self Match) — Score: 100.0 / 100")
+    
     for name, score in similarities[:top_n]:
         print(f"{name} — Score: {round(score, 1)} / 100")
 
