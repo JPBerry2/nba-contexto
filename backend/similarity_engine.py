@@ -1,10 +1,10 @@
 import numpy as np
 import pandas as pd
 
-print("Initializing Similarity Engine...")
+print("Initializing Enhanced Similarity Engine...")
 
 # ------------------------
-# 1. LOAD & CLEAN DATA
+# 1. LOAD, CLEAN & FILTER DATA
 # ------------------------
 try:
     df_basic = pd.read_csv("basic_stats.csv")
@@ -13,7 +13,6 @@ except FileNotFoundError:
     print("Error: CSV files not found. Ensure basic_stats.csv and advanced_stats.csv are in the workspace.")
     exit()
 
-# Force headers to uppercase and strip trailing spaces/hidden characters
 df_basic.columns = df_basic.columns.str.strip().str.upper()
 df_advanced.columns = df_advanced.columns.str.strip().str.upper()
 
@@ -24,12 +23,17 @@ for data_frame in [df_basic, df_advanced]:
     data_frame.drop_duplicates(subset="PLAYER", keep="first", inplace=True)
     data_frame.reset_index(drop=True, inplace=True)
 
-# Standardize PLAYER column
 df_basic = df_basic.rename(columns={col: f"{col.upper()}_basic" for col in df_basic.columns if col != "PLAYER"})
 df = pd.merge(df_basic, df_advanced, left_on="PLAYER", right_on="PLAYER")
 df = df.rename(columns={"PLAYER": "Player"})
 
-# Encode positions cleanly (PG=0, SG=1, SF=2, PF=3, C=4)
+# Sample-size filter to weed out low-minute noise (e.g., must have played >= 15 games and >= 15 MPG)
+for col in ["G_BASIC", "MP_BASIC"]:
+    if col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+
+df = df[(df["G_BASIC"] >= 15) & (df["MP_BASIC"] >= 15)].reset_index(drop=True)
+
 pos_col = "POS_BASIC" if "POS_BASIC" in df.columns else ("POS" if "POS" in df.columns else "POS_ADVANCED")
 position_map = {"PG": 0, "SG": 1, "SF": 2, "PF": 3, "C": 4}
 df["Pos_code"] = df.get(pos_col, "SF").map(position_map).fillna(2).astype(int)
@@ -40,10 +44,9 @@ df["Pos_code"] = df.get(pos_col, "SF").map(position_map).fillna(2).astype(int)
 category_features = {
     "production": ["TRB%", "AST%", "STL%", "BLK%"],
     "style": ["3PAr", "USG%", "OBPM", "DBPM"],
-    "aesthetic": ["TS%", "EFG%", "WS/48"]  # Re-introduced efficiency footprint
+    "aesthetic": ["TS%", "EFG%", "WS/48"]
 }
 
-# Dynamic column matcher
 for cat, feats in category_features.items():
     for idx, feat in enumerate(feats):
         for actual_col in df.columns:
@@ -79,17 +82,16 @@ for col in all_numeric:
         df[col] = 0.0
 
 df = df.dropna(subset=all_numeric).reset_index(drop=True)
-print(f"Data engine ready. Total active players: {len(df)}")
+print(f"Data engine ready. Qualified players post-filter: {len(df)}")
 
 # ------------------------
-# 3. SAFE VECTOR NORMALIZATION (Z-SCORE)
+# 3. VECTOR NORMALIZATION (Z-SCORE)
 # ------------------------
 def normalize_category(dataframe, features):
     X = dataframe[features].values.astype(float)
     stds = np.std(X, axis=0)
     means = np.mean(X, axis=0)
     
-    # Safe handling: if std is 0, assign zero array instead of dropping dimensions
     X_norm = np.zeros_like(X)
     nonzero_idx = stds != 0
     X_norm[:, nonzero_idx] = (X[:, nonzero_idx] - means[nonzero_idx]) / stds[nonzero_idx]
@@ -98,30 +100,35 @@ def normalize_category(dataframe, features):
 X_categories = {cat: normalize_category(df, feats) for cat, feats in category_features.items()}
 
 # ------------------------
-# 4. SIMILARITY LOGIC MATH
+# 4. SIMILARITY MATH (HYBRID: SHAPE + VOLUME)
 # ------------------------
 def calculate_physical_sim(player_a, player_b):
     pos_sim = POSITION_MATRIX[int(player_a["POS_CODE"])][int(player_b["POS_CODE"])]
-    
     age_a = player_a.get("AGE_BASIC", player_a.get("AGE", 25))
     age_b = player_b.get("AGE_BASIC", player_b.get("AGE", 25))
     age_diff = abs(age_a - age_b)
     age_sim = max(0.0, 1.0 - (age_diff * 0.15))
-    
     return (0.70 * pos_sim) + (0.30 * age_sim)
 
-def weighted_cosine_similarity(a, b, weights):
-    a_weighted = a * weights
-    b_weighted = b * weights
-    denominator = np.linalg.norm(a_weighted) * np.linalg.norm(b_weighted)
-    if denominator == 0: 
-        return 0.0
-    similarity = np.dot(a_weighted, b_weighted) / denominator
-    # Clip negative correlation to 0.0 to prevent scaling distortion
-    return max(0.0, similarity)
+def hybrid_similarity(a, b, weights):
+    """Blends Cosine Similarity (shape) with Euclidean Distance (volume/magnitude)"""
+    a_w = a * weights
+    b_w = b * weights
+    
+    # 1. Shape component (Cosine)
+    denom = np.linalg.norm(a_w) * np.linalg.norm(b_w)
+    cosine_sim = np.dot(a_w, b_w) / denom if denom != 0 else 0.0
+    cosine_sim = max(0.0, cosine_sim)
+    
+    # 2. Magnitude/Volume component (Euclidean)
+    dist = np.linalg.norm(a_w - b_w)
+    euclid_sim = 1.0 / (1.0 + 0.4 * dist)  # Decay function maps distance to [0, 1]
+    
+    # Blend: 60% shape alignment, 40% absolute volume matching
+    return (0.60 * cosine_sim) + (0.40 * euclid_sim)
 
 # ------------------------
-# 5. CLI TESTING ENTRY POINT
+# 5. CLI TESTING ENTRY POINT WITH GLOBAL STRETCH
 # ------------------------
 def find_similar(player_name, top_n=5):
     matches = df[df["Player"].str.upper() == player_name.upper()]
@@ -131,30 +138,49 @@ def find_similar(player_name, top_n=5):
 
     idx_target = matches.index[0]
     target_data = df.iloc[idx_target]
-    similarities = []
+    raw_scores = []
 
+    # Pass 1: Collect raw macro scores across the entire dataset
     for i in range(len(df)):
         if i == idx_target:
+            raw_scores.append(-999) # Placeholder for self
             continue
             
         comp_data = df.iloc[i]
         
         sim_physical = calculate_physical_sim(target_data, comp_data)
-        sim_production = weighted_cosine_similarity(X_categories["production"][idx_target], X_categories["production"][i], sub_weights["production"])
-        sim_style = weighted_cosine_similarity(X_categories["style"][idx_target], X_categories["style"][i], sub_weights["style"])
-        sim_aesthetic = weighted_cosine_similarity(X_categories["aesthetic"][idx_target], X_categories["aesthetic"][i], sub_weights["aesthetic"])
+        sim_production = hybrid_similarity(X_categories["production"][idx_target], X_categories["production"][i], sub_weights["production"])
+        sim_style = hybrid_similarity(X_categories["style"][idx_target], X_categories["style"][i], sub_weights["style"])
+        sim_aesthetic = hybrid_similarity(X_categories["aesthetic"][idx_target], X_categories["aesthetic"][i], sub_weights["aesthetic"])
         
-        total_score = (
+        raw_score = (
             (MACRO_WEIGHTS["physical"] * sim_physical) +
             (MACRO_WEIGHTS["production"] * sim_production) +
             (MACRO_WEIGHTS["style"] * sim_style) +
             (MACRO_WEIGHTS["aesthetic"] * sim_aesthetic)
-        ) * 100  # Scale cleanly to 1-100 range
-        
-        similarities.append((df.iloc[i]["Player"], total_score))
+        )
+        raw_scores.append(raw_score)
+
+    raw_scores = np.array(raw_scores)
+    
+    # Pass 2: Global Min-Max Stretch across the active dataset pool (ignoring self)
+    valid_scores = raw_scores[raw_scores != -999]
+    min_s, max_s = valid_scores.min(), valid_scores.max()
+    
+    similarities = []
+    for i in range(len(df)):
+        if i == idx_target:
+            continue
+        # Stretch raw score cleanly from 1.0 to 100.0 over the dataset bounds
+        if max_s - min_s == 0:
+            scaled_score = 50.0
+        else:
+            scaled_score = 1.0 + (raw_scores[i] - min_s) * (99.0 / (max_s - min_s))
+            
+        similarities.append((df.iloc[i]["Player"], scaled_score))
 
     similarities.sort(key=lambda x: x[1], reverse=True)
-    print(f"\nTop {top_n} most similar to {target_data['Player']}:")
+    print(f"\nTop {top_n} most similar to {target_data['Player']} (Stretched 1-100 Scale):")
     for name, score in similarities[:top_n]:
         print(f"{name} — Score: {round(score, 1)} / 100")
 
