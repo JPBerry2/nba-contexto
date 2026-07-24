@@ -7,7 +7,7 @@ import hashlib
 from datetime import datetime, timezone
 import os
 
-# Import matching the exact structures exported by your fixed similarity_engine.py
+# Import matching the exact structures exported by your similarity_engine.py
 from similarity_engine import df, X_categories, MACRO_WEIGHTS, sub_weights, weighted_cosine_similarity, calculate_physical_sim
 
 app = Flask(__name__)
@@ -102,12 +102,10 @@ def new_game():
 @app.route("/new_daily_game", methods=["GET"])
 def new_daily_game():
     """Daily Challenge: Deterministic selection based on current global calendar date."""
-    # Use timezone-aware UTC date string to prevent server desync bugs
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     
     players_list = sorted(df["Player"].unique().tolist())
     
-    # Hash calculation generation mapping seed arrays
     hash_object = hashlib.md5(today_str.encode("utf-8"))
     hash_hex = hash_object.hexdigest()
     
@@ -180,11 +178,14 @@ def hint(hint_type):
 
     try:
         if hint_type == "age":
-            return jsonify({"hint": str(info.get("Age_basic", "Unknown"))})
+            val = info.get("Age_basic", info.get("Age", "Unknown"))
+            return jsonify({"hint": str(val)})
         elif hint_type == "position":
-            return jsonify({"hint": str(info.get("Pos_basic", "Unknown"))})
+            val = info.get("Pos_basic", info.get("Pos", "Unknown"))
+            return jsonify({"hint": str(val)})
         elif hint_type == "team":
-            return jsonify({"hint": str(info.get("Team_basic", "Unknown"))})
+            val = info.get("Team_basic", info.get("Team", "Unknown"))
+            return jsonify({"hint": str(val)})
         else:
             return jsonify({"error": "Invalid hint type"}), 400
     except Exception as e:
