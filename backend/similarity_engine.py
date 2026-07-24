@@ -34,40 +34,40 @@ df = pd.merge(df_basic, df_advanced, left_on="PLAYER", right_on="PLAYER")
 df = df.rename(columns={"PLAYER": "Player"})  # Retain compatibility for app.py
 
 # Encode positions cleanly (PG=0, SG=1, SF=2, PF=3, C=4)
-
-
 pos_col = "POS_BASIC" if "POS_BASIC" in df.columns else ("POS" if "POS" in df.columns else None)
 if pos_col:
     position_map = {"PG": 0, "SG": 1, "SF": 2, "PF": 3, "C": 4}
-    # Map, and fill any weird/missing positions with a default center/forward index (2)
     df["Pos_code"] = df[pos_col].map(position_map).fillna(2).astype(int)
 else:
     df["Pos_code"] = 2
 
 # ------------------------
-# 2. FEATURE ARCHITECTURE & INTERNAL WEIGHTS
+# 2. FEATURE ARCHITECTURE & INTERNAL WEIGHTS (ANTI-STAR MAGNETISM)
 # ------------------------
 category_features = {
-    "production": ["PTS_basic", "MP_basic", "AST_basic", "TRB_basic", "STL_basic", "BLK_basic"],
-    "style": ["3PAr", "USG%", "AST%", "TS%", "FTr", "PER"]
+    # Production uses percentage share metrics to prevent raw minutes/volume distortion
+    "production": ["TRB%", "AST%", "STL%", "BLK%"],
+    # Style defines shooting profile, usage load, and ball security behavior
+    "style": ["3PAr", "USG%", "TS%", "FTr", "TOV%"]
 }
 
 # Dynamically clean/match case styles for the advanced metrics if they are uppercase in your source CSV
-for idx, style_feat in enumerate(category_features["style"]):
-    for actual_col in df.columns:
-        if style_feat.upper() == actual_col.upper():
-            category_features["style"][idx] = actual_col
+for cat in ["production", "style"]:
+    for idx, feat in enumerate(category_features[cat]):
+        for actual_col in df.columns:
+            if feat.upper() == actual_col.upper():
+                category_features[cat][idx] = actual_col
 
-# Sub-weights inside the vectors (must align with array order above)
+# Sub-weights inside the vectors
 sub_weights = {
-    "production": np.array([0.35, 0.20, 0.15, 0.15, 0.075, 0.075]), # STL and BLK split 15% evenly
-    "style": np.array([0.25, 0.20, 0.15, 0.15, 0.15, 0.10])
+    "production": np.array([0.30, 0.30, 0.20, 0.20]),         # Balances rebound, assist, and defensive event footprint
+    "style": np.array([0.25, 0.25, 0.20, 0.15, 0.15])          # Balances 3PAs, usage load, efficiency, and turnover profile
 }
 
 MACRO_WEIGHTS = {
-    "physical": 0.20,
-    "production": 0.40,
-    "style": 0.40
+    "physical": 0.15,     # Increased slightly so position mismatches act as a harder barrier
+    "production": 0.40,   # Focuses on box-score distribution footprint
+    "style": 0.45         # Heavy emphasis on shooting archetypes and usage dynamics
 }
 
 # Realistic modern position mapping
@@ -85,7 +85,6 @@ for col in all_numeric:
     if col in df.columns:
         df[col] = pd.to_numeric(df[col], errors='coerce')
     else:
-        # Fallback layout to guarantee Render won't crash your server on boot
         print(f"⚠️ Warning: Expected column {col} was missing from DataFrame. Creating fallback empty array values.")
         df[col] = 0.0
 
@@ -108,23 +107,16 @@ X_categories = {cat: normalize_category(df, feats) for cat, feats in category_fe
 # 4. SIMILARITY LOGIC MATH
 # ------------------------
 def calculate_physical_sim(player_a, player_b):
-    """Calculates non-vector traits between 0.0 and 1.0"""
-    # Position logic via proximity matrix
+    """Calculates non-vector traits between 0.0 and 1.0 (Position & Age only)"""
     pos_sim = POSITION_MATRIX[int(player_a["Pos_code"])][int(player_b["Pos_code"])]
     
-    # Safe lookup for age (handles 'Age_basic', 'Age', or defaults to 0)
     age_a = player_a.get("Age_basic", player_a.get("Age", 0))
     age_b = player_b.get("Age_basic", player_b.get("Age", 0))
     age_diff = abs(age_a - age_b)
     age_sim = max(0.0, 1.0 - (age_diff * 0.15))
     
-    # Safe lookup for team (handles 'Team_basic', 'Team', or defaults to '')
-    team_a = player_a.get("Team_basic", player_a.get("Team", ""))
-    team_b = player_b.get("Team_basic", player_b.get("Team", ""))
-    team_sim = 1.0 if team_a == team_b else 0.0
-    
-    # Blend: 50% Position, 30% Age, 20% Team
-    return (0.50 * pos_sim) + (0.30 * age_sim) + (0.20 * team_sim)
+    # Blend: 70% Position, 30% Age (Team context removed to avoid false penalties)
+    return (0.70 * pos_sim) + (0.30 * age_sim)
 
 def weighted_cosine_similarity(a, b, weights):
     """Applies custom internal attribute weights to vector space before calculation"""
