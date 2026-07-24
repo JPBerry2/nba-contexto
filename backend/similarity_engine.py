@@ -28,7 +28,6 @@ df = pd.merge(df_basic, df_advanced, left_on="PLAYER", right_on="PLAYER")
 df = df.rename(columns={"PLAYER": "Player"})
 
 # Sample-size filter to weed out low-minute noise (e.g., must have played >= 15 games and >= 15 MPG)
-# Safe dynamic column finder for sample-size filters
 g_col = next((c for c in df.columns if c in ["G_BASIC", "G", "GP"] or "G_" in c), None)
 mp_col = next((c for c in df.columns if c in ["MP_BASIC", "MP"] or "MP_" in c), None)
 
@@ -46,10 +45,11 @@ df["Pos_code"] = df.get(pos_col, "SF").map(position_map).fillna(2).astype(int)
 # ------------------------
 # 2. FEATURE ARCHITECTURE & WEIGHTS
 # ------------------------
+# Replaced age and added scoring efficiency/volume metrics (PTS per game and eFG% / points-oriented elements)
 category_features = {
     "production": ["TRB%", "AST%", "STL%", "BLK%"],
     "style": ["3PAr", "USG%", "OBPM", "DBPM"],
-    "aesthetic": ["TS%", "EFG%", "WS/48"]
+    "aesthetic": ["TS%", "EFG%", "WS/48", "PTS_BASIC"]
 }
 
 for cat, feats in category_features.items():
@@ -61,11 +61,11 @@ for cat, feats in category_features.items():
 sub_weights = {
     "production": np.array([0.30, 0.30, 0.20, 0.20]),
     "style": np.array([0.30, 0.30, 0.20, 0.20]),
-    "aesthetic": np.array([0.40, 0.40, 0.20])
+    "aesthetic": np.array([0.30, 0.25, 0.15, 0.30])  # Adjusted sub-weights to cleanly factor in scoring volume
 }
 
 MACRO_WEIGHTS = {
-    "physical": 0.10,
+    "physical": 0.10,     # Now purely based on position (since age was removed)
     "production": 0.35,
     "style": 0.35,
     "aesthetic": 0.20
@@ -79,7 +79,7 @@ POSITION_MATRIX = np.array([
     [0.1, 0.1, 0.3, 0.8, 1.0]   # C
 ])
 
-all_numeric = category_features["production"] + category_features["style"] + category_features["aesthetic"] + ["AGE_BASIC", "POS_CODE"]
+all_numeric = category_features["production"] + category_features["style"] + category_features["aesthetic"] + ["POS_CODE"]
 for col in all_numeric:
     if col in df.columns:
         df[col] = pd.to_numeric(df[col], errors='coerce')
@@ -108,12 +108,8 @@ X_categories = {cat: normalize_category(df, feats) for cat, feats in category_fe
 # 4. SIMILARITY MATH (HYBRID: SHAPE + VOLUME)
 # ------------------------
 def calculate_physical_sim(player_a, player_b):
-    pos_sim = POSITION_MATRIX[int(player_a["POS_CODE"])][int(player_b["POS_CODE"])]
-    age_a = player_a.get("AGE_BASIC", player_a.get("AGE", 25))
-    age_b = player_b.get("AGE_BASIC", player_b.get("AGE", 25))
-    age_diff = abs(age_a - age_b)
-    age_sim = max(0.0, 1.0 - (age_diff * 0.15))
-    return (0.70 * pos_sim) + (0.30 * age_sim)
+    """Calculates physical similarity using position matrix only (Age removed)"""
+    return float(POSITION_MATRIX[int(player_a["POS_CODE"])][int(player_b["POS_CODE"])])
 
 def hybrid_similarity(a, b, weights):
     """Blends Cosine Similarity (shape) with Euclidean Distance (volume/magnitude)"""
