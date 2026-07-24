@@ -42,13 +42,14 @@ else:
     df["Pos_code"] = 2
 
 # ------------------------
-# 2. FEATURE ARCHITECTURE & INTERNAL WEIGHTS (ANTI-STAR MAGNETISM)
+# 2. FEATURE ARCHITECTURE & INTERNAL WEIGHTS (TWO-WAY IMPACT TUNED)
 # ------------------------
 category_features = {
     # Production uses percentage share metrics to prevent raw minutes/volume distortion
     "production": ["TRB%", "AST%", "STL%", "BLK%"],
-    # Style defines shooting profile, usage load, and ball security behavior
-    "style": ["3PAr", "USG%", "TS%", "FTr", "TOV%"]
+    
+    # Style defines shooting footprint, usage, and split offensive/defensive box plus-minus impact
+    "style": ["3PAr", "USG%", "TS%", "OBPM", "DBPM"]
 }
 
 # Dynamically clean/match case styles for the advanced metrics if they are uppercase in your source CSV
@@ -58,16 +59,16 @@ for cat in ["production", "style"]:
             if feat.upper() == actual_col.upper():
                 category_features[cat][idx] = actual_col
 
-# Sub-weights inside the vectors
+# Sub-weights inside the vectors (balanced to incorporate OBPM/DBPM influence)
 sub_weights = {
-    "production": np.array([0.30, 0.30, 0.20, 0.20]),         # Balances rebound, assist, and defensive event footprint
-    "style": np.array([0.25, 0.25, 0.20, 0.15, 0.15])          # Balances 3PAs, usage load, efficiency, and turnover profile
+    "production": np.array([0.30, 0.30, 0.20, 0.20]),         # Rebound, assist, and defensive event footprint
+    "style": np.array([0.25, 0.20, 0.15, 0.20, 0.20])          # Balances shooting profile, usage load, efficiency, and two-way impact
 }
 
 MACRO_WEIGHTS = {
-    "physical": 0.15,     # Increased slightly so position mismatches act as a harder barrier
-    "production": 0.40,   # Focuses on box-score distribution footprint
-    "style": 0.45         # Heavy emphasis on shooting archetypes and usage dynamics
+    "physical": 0.15,     # Position/age barrier weight
+    "production": 0.40,   # Box-score distribution footprint
+    "style": 0.45         # Two-way impact, shooting archetypes, and usage dynamics
 }
 
 # Realistic modern position mapping
@@ -115,7 +116,7 @@ def calculate_physical_sim(player_a, player_b):
     age_diff = abs(age_a - age_b)
     age_sim = max(0.0, 1.0 - (age_diff * 0.15))
     
-    # Blend: 70% Position, 30% Age (Team context removed to avoid false penalties)
+    # Blend: 70% Position, 30% Age
     return (0.70 * pos_sim) + (0.30 * age_sim)
 
 def weighted_cosine_similarity(a, b, weights):
