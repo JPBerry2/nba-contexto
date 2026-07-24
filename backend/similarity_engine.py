@@ -168,8 +168,11 @@ def evaluate_guess(target_player_name, guessed_player_name):
     
     if self_raw_score > 0:
         raw_ratio = guess_raw_score / self_raw_score
-        # STRICT CEILING: min(99.0, ...) ensures a wrong guess can never hit 100
-        scaled_score = min(99.0, max(1.0, raw_ratio * 99.0))
+        
+        # LOWER THE MULTIPLIER AND CAP: 
+        # Capping at 98.9 max ensures rounding can NEVER mathematically produce 100.0
+        scaled_score = min(98.9, max(1.0, raw_ratio * 98.0))
+        
     else:
         scaled_score = 1.0
         
@@ -181,11 +184,4 @@ def evaluate_guess(target_player_name, guessed_player_name):
 if __name__ == "__main__":
     target = "Stephen Curry"
     
-    print(f"\n--- Testing Game Guess Logic for Target: {target} ---")
     
-    # Test correct guess
-    print(f"Guessing 'Stephen Curry': Score -> {evaluate_guess(target, 'Stephen Curry')} / 100")
-    
-    # Test incorrect guesses (will now correctly max out at 99.0 or lower)
-    print(f"Guessing 'Donovan Mitchell': Score -> {evaluate_guess(target, 'Donovan Mitchell')} / 100")
-    print(f"Guessing 'Trae Young': Score -> {evaluate_guess(target, 'Trae Young')} / 100")
