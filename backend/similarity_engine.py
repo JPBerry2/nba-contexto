@@ -123,7 +123,7 @@ def hybrid_similarity(a, b, weights):
     return (0.60 * cosine_sim) + (0.40 * euclid_sim)
 
 # ------------------------
-# 5. CLI TESTING ENTRY POINT WITH CAPPED 1-99 SCALE
+# 5. CLI TESTING ENTRY POINT WITH HARD 99.0 CEILING
 # ------------------------
 def find_similar(player_name, top_n=5):
     matches = df[df["Player"].str.upper() == player_name.upper()]
@@ -133,12 +133,25 @@ def find_similar(player_name, top_n=5):
 
     idx_target = matches.index[0]
     target_data = df.iloc[idx_target]
-    raw_scores = []
+    
+    # Calculate self-match raw score to serve as the absolute theoretical 100% benchmark reference
+    sim_physical_self = calculate_physical_sim(target_data, target_data)
+    sim_production_self = hybrid_similarity(X_categories["production"][idx_target], X_categories["production"][idx_target], sub_weights["production"])
+    sim_style_self = hybrid_similarity(X_categories["style"][idx_target], X_categories["style"][idx_target], sub_weights["style"])
+    sim_aesthetic_self = hybrid_similarity(X_categories["aesthetic"][idx_target], X_categories["aesthetic"][idx_target], sub_weights["aesthetic"])
+    
+    self_raw_score = (
+        (MACRO_WEIGHTS["physical"] * sim_physical_self) +
+        (MACRO_WEIGHTS["production"] * sim_production_self) +
+        (MACRO_WEIGHTS["style"] * sim_style_self) +
+        (MACRO_WEIGHTS["aesthetic"] * sim_aesthetic_self)
+    )
 
-    # Pass 1: Collect raw macro scores across the entire dataset
+    similarities = []
+
+    # Pass 1: Collect raw macro scores and scale directly against self-match ceiling with a hard 99.0 limit
     for i in range(len(df)):
         if i == idx_target:
-            raw_scores.append(-999) # Placeholder for self
             continue
             
         comp_data = df.iloc[i]
@@ -154,32 +167,21 @@ def find_similar(player_name, top_n=5):
             (MACRO_WEIGHTS["style"] * sim_style) +
             (MACRO_WEIGHTS["aesthetic"] * sim_aesthetic)
         )
-        raw_scores.append(raw_score)
-
-    raw_scores = np.array(raw_scores)
-    
-    # Pass 2: Global Min-Max Stretch strictly capped between 1.0 and 99.0
-    valid_scores = raw_scores[raw_scores != -999]
-    min_s, max_s = valid_scores.min(), valid_scores.max()
-    
-    similarities = []
-    for i in range(len(df)):
-        if i == idx_target:
-            continue
         
-        # Scale cleanly from 1.0 to 99.0 so 100 is uniquely reserved for the exact player query match
-        if max_s - min_s == 0:
-            scaled_score = 50.0
+        # Scale score as a percentage of the self-match ceiling, capped strictly at 99.0 max
+        if self_raw_score > 0:
+            raw_ratio = raw_score / self_raw_score
+            scaled_score = min(99.0, max(1.0, raw_ratio * 99.0))
         else:
-            scaled_score = 1.0 + (raw_scores[i] - min_s) * (98.0 / (max_s - min_s))
+            scaled_score = 1.0
             
         similarities.append((df.iloc[i]["Player"], scaled_score))
 
     similarities.sort(key=lambda x: x[1], reverse=True)
     
-    # Print the absolute self-match anchor first to explicitly preserve the 100/100 ceiling
-    print(f"\nTop {top_n} most similar to {target_data['Player']} (Capped 1-99 Scale):")
-    print(f">> {target_data['Player']} (Self Match) — Score: 100.0 / 100")
+    # Print the results cleanly with 100.0 reserved exclusively for the exact target match
+    print(f"\nTop {top_n} most similar to {target_data['Player']} (Strict 1-99 Scale):")
+    print(f">> {target_data['Player']} (Exact Answer) — Score: 100.0 / 100")
     
     for name, score in similarities[:top_n]:
         print(f"{name} — Score: {round(score, 1)} / 100")
