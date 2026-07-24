@@ -165,9 +165,31 @@ def guess():
         "closeness": closeness
     })
 
-
 @app.route("/hint/<hint_type>", methods=["GET"])
 def hint(hint_type):
+    game_id = request.args.get("game_id")
+    
+    if not game_id or game_id not in active_games:
+        return jsonify({"error": "Game not found"}), 400
+
+    hidden_player = active_games[game_id]["player"]
+    info = df[df["Player"] == hidden_player].iloc[0]
+
+    try:
+        if hint_type == "age":
+            val = info.get("Age_basic", info.get("AGE_BASIC", info.get("Age", info.get("AGE", "Unknown"))))
+            return jsonify({"hint": str(val)})
+        elif hint_type == "position":
+            val = info.get("Pos_basic", info.get("POS_BASIC", info.get("Pos", info.get("POS", "Unknown"))))
+            return jsonify({"hint": str(val)})
+        elif hint_type == "team":
+            val = info.get("Team_basic", info.get("TEAM_BASIC", info.get("Team", info.get("TEAM", "Unknown"))))
+            return jsonify({"hint": str(val)})
+        else:
+            return jsonify({"error": "Invalid hint type"}), 400
+    except Exception as e:
+        return jsonify({"error": f"Could not fetch hint: {str(e)}"}), 500
+
     game_id = request.args.get("game_id")
     
     if not game_id or game_id not in active_games:
