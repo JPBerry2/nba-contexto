@@ -34,8 +34,15 @@ df = pd.merge(df_basic, df_advanced, left_on="PLAYER", right_on="PLAYER")
 df = df.rename(columns={"PLAYER": "Player"})  # Retain compatibility for app.py
 
 # Encode positions cleanly (PG=0, SG=1, SF=2, PF=3, C=4)
-position_map = {"PG": 0, "SG": 1, "SF": 2, "PF": 3, "C": 4}
-df["Pos_code"] = df["Pos_basic"].map(position_map)
+
+
+pos_col = "POS_BASIC" if "POS_BASIC" in df.columns else ("POS" if "POS" in df.columns else None)
+if pos_col:
+    position_map = {"PG": 0, "SG": 1, "SF": 2, "PF": 3, "C": 4}
+    # Map, and fill any weird/missing positions with a default center/forward index (2)
+    df["Pos_code"] = df[pos_col].map(position_map).fillna(2).astype(int)
+else:
+    df["Pos_code"] = 2
 
 # ------------------------
 # 2. FEATURE ARCHITECTURE & INTERNAL WEIGHTS
