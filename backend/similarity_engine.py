@@ -28,11 +28,16 @@ df = pd.merge(df_basic, df_advanced, left_on="PLAYER", right_on="PLAYER")
 df = df.rename(columns={"PLAYER": "Player"})
 
 # Sample-size filter to weed out low-minute noise (e.g., must have played >= 15 games and >= 15 MPG)
-for col in ["G_BASIC", "MP_BASIC"]:
-    if col in df.columns:
-        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+# Safe dynamic column finder for sample-size filters
+g_col = next((c for c in df.columns if c in ["G_BASIC", "G", "GP"] or "G_" in c), None)
+mp_col = next((c for c in df.columns if c in ["MP_BASIC", "MP"] or "MP_" in c), None)
 
-df = df[(df["G_BASIC"] >= 15) & (df["MP_BASIC"] >= 15)].reset_index(drop=True)
+if g_col and mp_col:
+    df[g_col] = pd.to_numeric(df[g_col], errors='coerce').fillna(0)
+    df[mp_col] = pd.to_numeric(df[mp_col], errors='coerce').fillna(0)
+    df = df[(df[g_col] >= 15) & (df[mp_col] >= 15)].reset_index(drop=True)
+else:
+    print("⚠️ Warning: Game or Minute columns not found for filtering. Skipping sample-size filter.")
 
 pos_col = "POS_BASIC" if "POS_BASIC" in df.columns else ("POS" if "POS" in df.columns else "POS_ADVANCED")
 position_map = {"PG": 0, "SG": 1, "SF": 2, "PF": 3, "C": 4}
