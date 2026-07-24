@@ -305,7 +305,25 @@ function App() {
       return <div className={`feedback-item system ${isNewest ? "newest" : ""}`}>{item.message}</div>;
     }
 
-    const temp = getTemperatureIndicator(item.closeness);
+    // Safely clamp non-winning closeness to a max of 99 so it never hits 100 visually
+    const displayCloseness = Math.min(99, Math.round(item.closeness));
+    const temp = getTemperatureIndicator(displayCloseness);
+
+    return (
+      <div className={`feedback-item ${isNewest ? "newest-guess" : ""}`} style={{ marginBottom: "15px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: "bold", color: "#f8f9fa", padding: "0 10px" }}>
+          <span>{item.player} {isNewest && "✨"}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <span style={{ fontSize: "16px" }} title={temp.label}>{temp.icon}</span>
+            <span style={{ color: getColor(displayCloseness) }}>{displayCloseness}/100</span>
+          </div>
+        </div>
+        <div style={{ width: "100%", height: "14px", background: "#343a40", borderRadius: "7px", margin: "6px 0", overflow: "hidden", border: "1px solid #495057" }}>
+          <div style={{ width: `${displayCloseness}%`, height: "100%", background: getColor(displayCloseness), transition: "width 0.4s ease" }} />
+        </div>
+      </div>
+    );
+  };
 
     return (
       <div className={`feedback-item ${isNewest ? "newest-guess" : ""}`} style={{ marginBottom: "15px" }}>

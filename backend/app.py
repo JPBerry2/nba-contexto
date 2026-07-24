@@ -80,7 +80,7 @@ def compute_percentiles(target_player):
 
     raw_scores = np.array(raw_scores)
 
-    # Pass 2: Global Min-Max Stretch (scale score dynamically from 1 to 100)
+    # Pass 2: Global Min-Max Stretch (scale score dynamically from 1 to 99 for guesses)
     valid_scores = raw_scores[raw_scores != -999]
     min_s, max_s = valid_scores.min(), valid_scores.max()
 
@@ -92,7 +92,9 @@ def compute_percentiles(target_player):
         if max_s - min_s == 0:
             scaled_score = 50.0
         else:
-            scaled_score = 1.0 + (raw_scores[i] - min_s) * (99.0 / (max_s - min_s))
+            # Scale non-exact matches strictly between 1.0 and 98.9 to protect 100 for correct answers
+            scaled_score = 1.0 + (raw_scores[i] - min_s) * (97.9 / (max_s - min_s))
+            scaled_score = min(98.9, max(1.0, scaled_score))
 
         percentile_dict[df.iloc[i]["Player"]] = int(round(scaled_score))
 
@@ -103,7 +105,6 @@ def compute_percentiles(target_player):
 # API ROUTE PIPELINES
 # ---------------------------------------------------------------------------
 
-
 @app.route("/players", methods=["GET"])
 def get_players():
     return jsonify(sorted(df["Player"].unique().tolist()))
@@ -111,7 +112,6 @@ def get_players():
 
 @app.route("/new_game", methods=["GET"])
 def new_game():
-    """Infinite Mode: Purely randomized selection on every request."""
     difficulty = request.args.get("difficulty", "hard")
 
     if difficulty == "easy":
@@ -142,9 +142,7 @@ def new_game():
 
 @app.route("/new_daily_game", methods=["GET"])
 def new_daily_game():
-    """Daily Challenge: Deterministic selection based on current global calendar date."""
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-
     players_list = sorted(df["Player"].unique().tolist())
 
     hash_object = hashlib.md5(today_str.encode("utf-8"))
@@ -196,7 +194,6 @@ def guess():
     actual_name = actual_row["Player"]
 
     if actual_name == hidden_player:
-        # Extract top 3 closest matches
         sorted_matches = sorted(
             percentiles.items(), key=lambda x: x[1], reverse=True
         )
@@ -216,7 +213,6 @@ def guess():
         )
 
     closeness = percentiles.get(actual_name, 0)
-
     return jsonify({"correct": False, "closeness": closeness})
 
 
@@ -276,7 +272,6 @@ def reveal_answer():
     hidden_player = current_game["player"]
     percentiles = current_game["percentiles"]
 
-    # Extract top 3 closest matches on reveal/forfeit
     sorted_matches = sorted(
         percentiles.items(), key=lambda x: x[1], reverse=True
     )

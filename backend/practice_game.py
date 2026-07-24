@@ -1,107 +1,49 @@
-import random
-import numpy as np
-from similarity_engine import df, X_categories, category_weights, cosine_similarity, position_similarity
-
 # ------------------------
-# Compute similarity for a single guess
+# DIAGNOSTIC TEST: Check why two players score too high
 # ------------------------
-def compute_similarity(player_name, guess_name):
-    idx_target = df.index[df["Player"] == player_name][0]
-    idx_guess = df.index[df["Player"] == guess_name][0]
+def debug_player_similarity(player_a_name, player_b_name):
+    print(f"\n🔍 Running Diagnostic: {player_a_name} vs {player_b_name}")
+    
+    match_a = df[df["Player"].str.upper() == player_a_name.upper()]
+    match_b = df[df["Player"].str.upper() == player_b_name.upper()]
+    
+    if match_a.empty or match_b.empty:
+        print("❌ One or both players not found in active dataframe.")
+        return
 
-    sim_total = 0
-    for cat, weight in category_weights.items():
-        sim_cat = cosine_similarity(X_categories[cat][idx_target], X_categories[cat][idx_guess])
-        sim_total += sim_cat * weight
+    idx_a = match_a.index[0]
+    idx_b = match_b.index[0]
+    
+    data_a = df.iloc[idx_a]
+    data_b = df.iloc[idx_b]
+    
+    print(f"Positions -> {data_a['Player']}: Code {data_a['POS_CODE']} | {data_b['Player']}: Code {data_b['POS_CODE']}")
+    print(f"Physical Sim Score: {calculate_physical_sim(data_a, data_b):.3f}")
+    
+    # Check category vectors and hybrid similarities
+    for cat_name, feats in category_features.items():
+        vec_a = X_categories[cat_name][idx_a] * sub_weights[cat_name]
+        vec_b = X_categories[cat_name][idx_b] * sub_weights[cat_name]
+        
+        sim = hybrid_similarity(X_categories[cat_name][idx_a], X_categories[cat_name][idx_b], sub_weights[cat_name])
+        print(f"Category '{cat_name}' Similarity: {sim:.3f}")
+        
+        # Print raw features side-by-side to see if they are identical zeros or sparse data
+        print(f"   Values for {cat_name}:")
+        for feat in feats:
+            val_a = data_a[feat] if feat in data_a else "N/A"
+            val_b = data_b[feat] if feat in data_b else "N/A"
+            print(f"      - {feat}: {data_a['Player']}={val_a} vs {data_b['Player']}={val_b}")
 
-    # Boost with position similarity
-    sim_total = 0.8 * sim_total + 0.2 * position_similarity(
-        df.iloc[idx_target]["Pos_code"], df.iloc[idx_guess]["Pos_code"]
+    # Final Computed Score
+    raw_score = (
+        (MACRO_WEIGHTS["physical"] * calculate_physical_sim(data_a, data_b)) +
+        (MACRO_WEIGHTS["production"] * hybrid_similarity(X_categories["production"][idx_a], X_categories["production"][idx_b], sub_weights["production"])) +
+        (MACRO_WEIGHTS["style"] * hybrid_similarity(X_categories["style"][idx_a], X_categories["style"][idx_b], sub_weights["style"])) +
+        (MACRO_WEIGHTS["aesthetic"] * hybrid_similarity(X_categories["aesthetic"][idx_a], X_categories["aesthetic"][idx_b], sub_weights["aesthetic"]))
     )
-    return sim_total
+    print(f"👉 Raw Combined Score: {raw_score:.4f}")
 
-# ------------------------
-# Compute similarity percentiles for the target player
-# ------------------------
-def compute_percentiles(target_player):
-    idx_target = df.index[df["Player"] == target_player][0]
-    target_pos = df.iloc[idx_target]["Pos_code"]
-
-    sims = []
-    for i in range(len(df)):
-        if i == idx_target:
-            continue
-        sim_total = 0
-        for cat, weight in category_weights.items():
-            sim_cat = cosine_similarity(X_categories[cat][idx_target], X_categories[cat][i])
-            sim_total += sim_cat * weight
-        sim_total = 0.8 * sim_total + 0.2 * position_similarity(target_pos, df.iloc[i]["Pos_code"])
-        sims.append((df.iloc[i]["Player"], sim_total))
-    sims.sort(key=lambda x: x[1], reverse=True)
-
-    # Assign percentile ranks
-    n = len(sims)
-    percentile_dict = {}
-    for rank, (player, score) in enumerate(sims, start=1):
-        percentile = int((n - rank) / n * 100)
-        percentile_dict[player] = percentile
-    return percentile_dict
-
-# ------------------------
-# Practice game loop
-# ------------------------
-def practice_game(difficulty="hard"):
-    if difficulty == "easy":
-        df_pool = df.sort_values("MP_basic", ascending=False).head(150)
-    else:
-        df_pool = df.copy()
-
-    players_list = df_pool["Player"].tolist()
-    target_player = random.choice(players_list)
-    target_info = df_pool[df_pool["Player"] == target_player].iloc[0]
-
-    # Precompute percentiles for this target
-    percentiles = compute_percentiles(target_player)
-
-    print("\n--- NBA Contexto Practice ---")
-    print(f"Difficulty: {difficulty.capitalize()}")
-    print("Guess the hidden player!")
-    print("Type 'hint' for clues, or 'quit' to end the game.\n")
-
-    while True:
-        guess = input("Enter your guess: ").strip()
-
-        if guess.lower() == "quit":
-            print("\nYou quit the game.")
-            break
-
-        if guess.lower() == "hint":
-            print(f"Hint → Position: {target_info['Pos_basic']}, Team: {target_info['Team_basic']}, Age: {target_info['Age_basic']}")
-            continue
-
-        if guess not in df_pool["Player"].values:
-            print("❌ Player not found in this pool. Try again.")
-            continue
-
-        if guess == target_player:
-            print(f"\n🎉 Correct! You guessed the hidden player: {target_player}")
-            break
-
-        closeness = percentiles.get(guess, 0)
-        print(f"Closeness rating: {closeness}/100")
-
-    # Reveal target and top 5
-    print("\nThe hidden player was:", target_player)
-    top5 = sorted(percentiles.items(), key=lambda x: x[1], reverse=True)[:5]
-    print("\nTop 5 most similar players:")
-    for name, pct in top5:
-        print(f"{name} — {pct}/100")
-
-# ------------------------
-# Run
-# ------------------------
 if __name__ == "__main__":
-    diff = input("Select difficulty: easy / hard: ").strip().lower()
-    if diff not in ["easy", "hard"]:
-        diff = "hard"
-    practice_game(difficulty=diff)
+    # Test the exact pairing that caused the issue
+    debug_player_similarity("Josh Minott", "Jordan Walsh")
