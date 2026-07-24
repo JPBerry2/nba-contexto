@@ -112,12 +112,16 @@ def calculate_physical_sim(player_a, player_b):
     # Position logic via proximity matrix
     pos_sim = POSITION_MATRIX[int(player_a["Pos_code"])][int(player_b["Pos_code"])]
     
-    # Age proximity: linear penalty of 0.15 per year difference (floor at 0)
-    age_diff = abs(player_a["Age_basic"] - player_b["Age_basic"])
+    # Safe lookup for age (handles 'Age_basic', 'Age', or defaults to 0)
+    age_a = player_a.get("Age_basic", player_a.get("Age", 0))
+    age_b = player_b.get("Age_basic", player_b.get("Age", 0))
+    age_diff = abs(age_a - age_b)
     age_sim = max(0.0, 1.0 - (age_diff * 0.15))
     
-    # Team match
-    team_sim = 1.0 if player_a["Team_basic"] == player_b["Team_basic"] else 0.0
+    # Safe lookup for team (handles 'Team_basic', 'Team', or defaults to '')
+    team_a = player_a.get("Team_basic", player_a.get("Team", ""))
+    team_b = player_b.get("Team_basic", player_b.get("Team", ""))
+    team_sim = 1.0 if team_a == team_b else 0.0
     
     # Blend: 50% Position, 30% Age, 20% Team
     return (0.50 * pos_sim) + (0.30 * age_sim) + (0.20 * team_sim)
