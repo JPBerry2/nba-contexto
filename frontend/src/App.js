@@ -225,7 +225,7 @@ function App() {
   };
 
   // ---------------------------------------------------------------------------
-  // 4. Hints & Resignation
+  // 4. Hints, Resignation & Sharing
   // ---------------------------------------------------------------------------
   const getHint = async (type) => {
     if (gameOver || hasHint(type)) return;
@@ -270,6 +270,35 @@ function App() {
     return hintsList.some((h) => h.type === "team");
   };
 
+  const handleShareResults = () => {
+    const guessResults = sortedHistory
+      .slice()
+      .reverse()
+      .map((item) => {
+        if (item.type === "system") return null;
+        const closeness = Math.min(99, Math.round(item.closeness));
+        if (closeness >= 80) return "🔥";
+        if (closeness >= 50) return "🌡️";
+        if (closeness >= 25) return "❄️";
+        return "🧊";
+      })
+      .filter(Boolean)
+      .join("");
+
+    const shareText = `🏀 WonOf1 Contexto (${gameMode === "daily" ? "Daily" : `Infinite - ${difficulty.toUpperCase()}`})\n` +
+      `Guessed in ${guessCount} tries!\n` +
+      `${guessResults}\n` +
+      `Play here: https://nba-contexto-gules.vercel.app/`;
+
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(shareText).then(() => {
+        alert("📋 Results copied to clipboard! Ready to paste on X or Reddit.");
+      });
+    } else {
+      prompt("Copy your results:", shareText);
+    }
+  };
+
   // ---------------------------------------------------------------------------
   // 5. Formspree Feedback Integration
   // ---------------------------------------------------------------------------
@@ -305,7 +334,6 @@ function App() {
       return <div className={`feedback-item system ${isNewest ? "newest" : ""}`}>{item.message}</div>;
     }
 
-    // Safely clamp non-winning closeness to a max of 99 so it never hits 100 visually
     const displayCloseness = Math.min(99, Math.round(item.closeness));
     const temp = getTemperatureIndicator(displayCloseness);
 
@@ -325,22 +353,6 @@ function App() {
     );
   };
 
-    return (
-      <div className={`feedback-item ${isNewest ? "newest-guess" : ""}`} style={{ marginBottom: "15px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: "bold", color: "#f8f9fa", padding: "0 10px" }}>
-          <span>{item.player} {isNewest && "✨"}</span>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <span style={{ fontSize: "16px" }} title={temp.label}>{temp.icon}</span>
-            <span style={{ color: getColor(item.closeness) }}>{item.closeness}/100</span>
-          </div>
-        </div>
-        <div style={{ width: "100%", height: "14px", background: "#343a40", borderRadius: "7px", margin: "6px 0", overflow: "hidden", border: "1px solid #495057" }}>
-          <div style={{ width: `${item.closeness}%`, height: "100%", background: getColor(item.closeness), transition: "width 0.4s ease" }} />
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="App" style={{ maxWidth: "520px", margin: "0 auto", padding: "20px", textAlign: "center", backgroundColor: "#121212", color: "#f8f9fa", minHeight: "100vh", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
       
@@ -355,10 +367,13 @@ function App() {
         </div>
         <p style={{ margin: "5px 0 0 0", fontSize: "12px", color: "#a4b0be", letterSpacing: "1px" }}>POWERED BY WONOF1 CREATOR ARCHITECTURE</p>
         
-        {/* YOUTUBE CHANNEL PROMO BANNER LINK */}
-        <div style={{ marginTop: "12px" }}>
+        {/* YOUTUBE CHANNEL & SUPPORT LINKS BANNER */}
+        <div style={{ marginTop: "12px", display: "flex", justifyContent: "center", gap: "8px", flexWrap: "wrap" }}>
           <a href="https://www.youtube.com/@WonOf1" target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "#ff0000", color: "#ffffff", padding: "5px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold", textDecoration: "none", boxShadow: "0 2px 8px rgba(255,0,0,0.3)" }}>
             🔴 Subscribe to WonOf1 on YouTube
+          </a>
+          <a href="https://buymeacoffee.com/YOUR_USERNAME" target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "#ffa502", color: "#121212", padding: "5px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold", textDecoration: "none", boxShadow: "0 2px 8px rgba(255,165,0,0.3)" }}>
+            ☕ Support Creator
           </a>
         </div>
       </div>
@@ -501,7 +516,7 @@ function App() {
         </>
       )}
 
-      {/* GAME RUNTIME TERMINATION DISPLAY VIEW CARD (WITH TOP 3 MATCHES & INSTANT PLAY AGAIN BUTTON) */}
+      {/* GAME RUNTIME TERMINATION DISPLAY VIEW CARD (WITH TOP 3 MATCHES & SHARE BUTTON) */}
       {gameOver && (
         <div style={{ background: "#1e272e", padding: "25px", borderRadius: "10px", margin: "20px 0", border: "2px solid #ffa502", textAlign: "left" }}>
           <h2 style={{ margin: "0 0 15px 0", color: "#ffa502", textAlign: "center" }}>Battle Session Finished!</h2>
@@ -517,7 +532,10 @@ function App() {
             </div>
           )}
 
-          <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
+          <div style={{ display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap" }}>
+            <button onClick={handleShareResults} style={{ padding: "12px 20px", background: "#ff4757", color: "#fff", border: "none", borderRadius: "6px", fontSize: "15px", fontWeight: "bold", cursor: "pointer" }}>
+              📤 Share Score
+            </button>
             {gameMode === "infinite" && (
               <button onClick={() => startInfiniteGame(difficulty)} style={{ padding: "12px 20px", background: "#2ed573", color: "#fff", border: "none", borderRadius: "6px", fontSize: "15px", fontWeight: "bold", cursor: "pointer" }}>
                 🔄 Play Again ({difficulty.toUpperCase()})
