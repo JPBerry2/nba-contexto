@@ -372,7 +372,7 @@ function App() {
           <a href="https://www.youtube.com/@WonOf1" target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "#ff0000", color: "#ffffff", padding: "5px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold", textDecoration: "none", boxShadow: "0 2px 8px rgba(255,0,0,0.3)" }}>
             🔴 Subscribe to WonOf1 on YouTube
           </a>
-          <a href="https://buymeacoffee.com/YOUR_USERNAME" target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "#ffa502", color: "#121212", padding: "5px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold", textDecoration: "none", boxShadow: "0 2px 8px rgba(255,165,0,0.3)" }}>
+          <a href="ko-fi.com/wonof1" target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "#ffa502", color: "#121212", padding: "5px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold", textDecoration: "none", boxShadow: "0 2px 8px rgba(255,165,0,0.3)" }}>
             ☕ Support Creator
           </a>
         </div>
